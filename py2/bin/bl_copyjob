@@ -1,0 +1,34 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--srcjob", dest="srcJob",help="source job")
+parser.add_option("--dstjob", dest="destJob",help="new job name")
+
+(option,args) = parser.parse_args()
+
+if not (option.srcJob and option.destJob):
+    parser.print_help()
+    print
+    print "--srcjob, --dstjob are required"
+    sys.exit(1)
+
+(srcGroup,srcJob) = blBase.normalizeArg(option.srcJob,"--srcjob")
+(destGroup,destJob) = blBase.normalizeArg(option.destJob,"--destjob")
+
+if srcGroup == destGroup and srcJob == destJob:
+    print "we cant copy the file over itself"
+    sys.exit(1)
+
+bl=blBase()
+
+result = bl.copyJob(srcGroup,srcJob,destGroup,destJob)
+print result
+
+bl.finishup(result.success)

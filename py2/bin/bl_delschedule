@@ -1,0 +1,44 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser(usage="""bl_delschedule [--job JOB || --jobkey KEY] || --help
+Delete all scheduled executions of job -- see bl_printschedule to see what is in scope""")
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",action="store",help="//WorkAreas/path/to/your/job - if not fully qualified then relative to env varable $myGroup")
+parser.add_option("--jobkey", dest="jobKey",action="store",help="Optionally, identify job by jobkey")
+#parser.add_option("--outputfile", dest="outputfile",action="store",help="output goes to a log file")
+
+(option,args) = parser.parse_args()
+
+#if (option.jobrunkey and option.lastrun) or not (option.jobrunkey or option.lastrun):
+#    parser.print_help()
+#    print
+#    print "Exactly one of --lastrun or --jobresultkey is required"
+#    sys.exit(1)
+    
+if (option.job and option.jobKey):
+    parser.print_help()
+    print
+    print "Exactly one of --job, and --jobkey can be used"
+    sys.exit(1)
+
+bl = blBase()
+if option.job:
+    (jobGroup,jobName)= blBase.normalizeArg(option.job,"--job")
+
+    result = bl.jobDBKey(jobGroup,jobName)
+    if result.success:
+        option.jobKey = result.returnValue
+    else:
+        print "ERROR: no job key found for",jobGroup + "/" +jobName
+        print result
+
+result = bl.runBlcli("Job","removeAllSchedules",[option.jobKey])
+if result.success: print "deleted scheduled jobs for", result.returnValue
+else: print result
+bl.finishup(result.success)

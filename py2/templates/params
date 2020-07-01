@@ -1,0 +1,12 @@
+# Each row shold have these values:
+# PARAMNAME PARAMVALUE COMMENT [EDITTYPE]
+# 
+# EDITTYPE is optional and should be the sum of these values:
+#     1 = takes value 2 = not empty 4 = editable 8 = param flag required
+# default value is 7
+#
+# EXAMPLES:
+# LANE PROD "LLE or PROD" 3
+# LOGDIR [local path to project + "/log/subproject"]
+# LOGFILE "ps.log" "" 7
+# PASSWORD yourpassword "new root password"

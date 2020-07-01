@@ -1,0 +1,57 @@
+#!python
+## created 5/15/2018 by Mark Price
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotfile", dest="depotFile",help="file to retrieve - this will be a depot file and not an nshcript.")
+parser.add_option("--dsthost", dest="dstHost",help="host to copy the file to - defaults to localhost")
+parser.add_option("--dstdir", dest="dstDir",help="filename to copy to")
+
+(option,args) = parser.parse_args()
+
+
+if not option.depotFile:
+    parser.print_help()
+    print "--depotfile required"
+    sys.exit(1)
+
+
+(depotGroup,depotFile)=blBase.normalizeArg(option.depotFile,"--depotfile")
+
+
+pwd = os.popen("pwd").read().strip()
+if not option.dstDir:
+    option.dstDir=""
+if not re.search("^/", option.dstDir):
+    option.dstDir = os.path.normpath(pwd + "/" + option.dstDir)
+
+bl=blBase()
+
+## normalize FQDN
+if option.dstHost: fqdn = bl.blFQDN(option.dstHost)
+else: fqdn = bl.localBlFQDN()
+
+if not fqdn:
+    print "source host does not appear to be in this bladelogic group."
+    bl.finishup(False)
+
+#option.dstDir = os.path.normpath(option.dstDir)
+
+dest = "//" + fqdn + option.dstDir
+
+print "copy",depotGroup + "/" + depotFile,"to",dest
+
+result = bl.runBlcli("DepotFile","copyFileContentsToPath",[depotGroup,depotFile,dest])
+print "get file:", result.success
+
+if not result.success:
+    print ""
+    print result
+
+bl.finishup(result.success)

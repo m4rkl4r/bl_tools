@@ -1,0 +1,43 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--srcobj", dest="srcObj",help="software, files, NSHScripts, BLPackages in the depot.  If not starting with '/', $myGroup will be prepended")
+parser.add_option("--dstobj", dest="dstObj",help="new object name.  If not starting with '/', $myGroup will be prepended")
+
+(option,args) = parser.parse_args()
+
+(srcGroup,srcObj)=blBase.normalizeArg(option.srcObj,"--srcObj")
+(destGroup,dstObj)=blBase.normalizeArg(option.dstObj,"--dstObj")
+
+
+if not (option.srcObj and option.dstObj):
+    parser.print_help()
+    print "--srcgroup, --destfile required"
+    sys.exit(1)
+
+bl=blBase()
+
+## here maybe DepotFile addFileToDepot(groupname,filelocation,name,description) -- all fields are normal strings
+print "finding", srcGroup + "/" + srcObj, "in depot:",
+result = bl.depotObjectDBKey(srcGroup,srcObj)
+if result is None:
+    print "couldn't find", srcGroup + "/" + srcObj, "in depot.",
+    bl.finishup(1)    
+scriptdbkey=None
+if result.success:
+    scriptdbkey=result.returnValue
+else:
+    print "couldn't find",option.srcObj,"in",option.srcGroup 
+    sys.exit(1)
+print "copying", srcGroup + "/" + srcObj,"to",destGroup + "/" + dstObj
+result = bl.runBlcli("DepotObject","copyDepotObject",[scriptdbkey,destGroup,dstObj])
+print result
+
+bl.finishup(result.success)

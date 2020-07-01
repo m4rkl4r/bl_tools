@@ -1,0 +1,115 @@
+#!python
+from blBase import blBase
+import sys
+from gzip import GzipFile
+from StringIO import StringIO
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotobject", dest="depotObject",help="file depot file/directory being viewed.  If it doesn't start with '/', $myGroup will be prepended.")
+parser.add_option("--jobobject", dest="jobObject",help="job file/directory being viewed.  If it doesn't start with '/', $myGroup will be prepended.")
+parser.add_option("--servergroup", dest="serverGroup",help="Server group being viewed.  If it doesn't start with '/', $myGroup will be prepended.")
+parser.add_option("--server", dest="server",help="server being viewed.  Typically uses fqdn.")
+parser.add_option("--showpolicyname", dest="showPolicyName",action="store_true",help="For policy profiles, show just the name rather than the suite of permissions.  If it doesn't start with '/', $myGroup will be prepended.")
+
+(option,args) = parser.parse_args()
+
+argsum=0
+for val in [option.depotObject, option.jobObject, option.serverGroup, option.server]:
+    if val is not None: argsum = argsum + 1
+if argsum != 1:
+        parser.print_help()
+        print
+        print "exactly one of --depotobject, --jobobject, --servergroup or --server must be used"
+        sys.exit(1)
+
+object_path=None
+if option.depotObject is not None: object_path=option.depotObject
+if option.jobObject is not None: object_path=option.jobObject
+if option.serverGroup is not None: object_path=option.serverGroup
+
+if option.server is None and object_path is None: # if --depotscript not spcefied, use the 'basename' value of --script
+    print object_path,": exiting because no object specified"
+    parser.print_help()
+    sys.exit(1)
+elif option.server is None:
+    if option.depotObject is not None: flag="--depotobject"
+    if option.jobObject is not None: flag="--jobobject"
+    if option.serverGroup is not None: flag="--servergroup"
+    (grp,obj)= blBase.normalizeArg(object_path,flag)
+    if not obj:
+        objectFullPath=grp
+    else:   objectFullPath=grp + "/" + obj
+    dirname = "/".join(objectFullPath.split("/")[:-1])
+    basename = objectFullPath.split("/")[-1]
+
+bl=blBase()
+try:
+    print "looking up",str(objectFullPath) + ":",
+except:
+    print str(option.server) + ":"
+
+fileDBKey=None
+dirDBKey=None
+dbkey=None
+###
+if option.depotObject is not None: gpnamespace="Depot"
+if option.jobObject is not None:   gpnamespace="Job"
+if option.serverGroup is not None:  gpnamespace="Server"
+if option.server is None: 
+    dirDBKey=bl.getGroupDBKey(gpnamespace,objectFullPath)
+if dirDBKey and dirDBKey.success:
+    print "found group:",
+    dbkey=dirDBKey.returnValue
+else:
+    if option.depotObject is not None:
+        fileDBKey=bl.depotObjectDBKey(dirname,basename)
+    elif option.jobObject is not None:
+        fileDBKey=bl.jobDBKey(dirname,basename)
+    elif option.server is not None:
+        serverDBKey=bl.serverDBKey(option.server)
+    if fileDBKey and fileDBKey.success:
+        dbkey=fileDBKey.returnValue
+    if dbkey: print "found file (or server):",
+print dbkey
+
+if not dbkey:
+    if option.depotObject is not None: print "dbkey not found for",option.depotObject
+    if option.jobObject is not None: print "dbkey not found for",option.jobObject
+    if option.serverGroup is not None: print "dbkey not found for",option.serverGroup
+    if option.server is not None: print "dbkey not found for",option.server
+    print "fileDBKey:",fileDBKey
+    print "dirDBKey:", dirDBKey
+    sys.exit(1)
+
+
+result=None
+if fileDBKey and fileDBKey.success: 
+    #print "found fileDBKey",fileDBKey.returnValue,"for",objectFullPath
+    if option.depotObject is not None: namespace="DepotObject"
+    if option.jobObject is not None: namespace="Job"
+    if option.server is not None: namespace="Server"
+    result = bl.runBlcli(namespace,"showPermissions",[dbkey])
+if dirDBKey and dirDBKey.success: 
+    #print "found dirDBKey",dirDBKey.returnValue,"for",objectFullPath
+    if option.depotObject is not None: namespace="DepotGroup"
+    if option.jobObject is not None: namespace="JobGroup"
+    if option.serverGroup is not None: namespace="ServerGroup"
+    result = bl.runBlcli(namespace,"showPermissions",[objectFullPath])
+
+if result.success:
+    print "============ RESULTS =============="
+    print result.returnValue
+else:
+    print "showPermissions:",result
+## here maybe DepotFile addFileToDepot(groupname,filelocation,name,description) -- all fields are normal strings
+#print "placing",script,"in",depotGroup,"as",depotScript
+#print "NSHScript","addNSHScriptToDepotByGroupName",[depotGroup,filetype,script,depotScript,fileDescription]
+#result= bl.runBlcli("NSHScript","addNSHScriptToDepotByGroupName",[depotGroup,filetype,script,depotScript,fileDescription])
+#print result
+
+bl.finishup(result.success)

@@ -1,0 +1,78 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",help="fully qualified job name.  If not starting with '/', $myGroup will be prepended.")
+parser.add_option("--servers", dest="servers",help="comma delimited list of server names (shortname or fqdn)")
+parser.add_option("--serverfile", dest="serverFile",help="filename with newline delimited list of servers (shortname or fqdn)")
+parser.add_option("--servergroups", dest="serverGroups",help="comma delimited list of server groups in /qualified/group/name format")
+(option,args) = parser.parse_args()
+
+bl=blBase()
+
+(jobGroup,jobName)=blBase.normalizeArg(option.job,"--job")
+
+success=True
+
+if not (option.job):
+    parser.print_help()
+    print
+    print "--job is required."
+    sys.exit(1)
+if not (option.serverFile or option.serverGroups or option.servers):
+    parser.print_help()
+    print
+    print "At least one of --servers, --serverfile, --servergroups is required"
+    sys.exit(1)
+
+if option.serverGroups:
+    serverGroups=option.serverGroups.split(",")
+    newGroups = list()
+    myGroup = blBase.getMyGroup()
+    for group in serverGroups:
+        (groupbase,groupname)=blBase.normalizeArg(group,"--servergroups="+group)
+        newGroups.append(groupbase+'/'+groupname)
+    print "adding server groups to job", jobGroup + "/" + jobName,":",",".join(newGroups)
+    result = bl.addServerGroupsToJob(jobGroup,jobName,newGroups)
+    print result.success
+    if not result.success: 
+        print result
+        success=False
+    
+if option.servers:
+    print "Adding --servers="+option.servers+" to job:",
+    servers_servermap = bl.validateServerList(option.servers.split(","))
+    result = bl.addServersToJob(jobGroup,jobName,servers_servermap["good"])
+    print result.success
+    if not result.success:
+        print result
+        print "could not add --servers to job"
+        success=False
+    if servers_servermap["bad"]:
+        print "The following --servers were not found in role."
+        for server in servers_servermap["bad"]:
+            print "\t" + server
+
+if option.serverFile:
+    servers = open(option.serverFile,"r").readlines()
+    servers = map(lambda x: x.strip(),servers)
+    serverfile_servermap = bl.validateServerList(servers)
+    print "Adding --serverfile to ",jobGroup + "/" + jobName," containing",",".join(servers),":",
+    result = bl.addServersToJob(jobGroup,jobName,serverfile_servermap["good"])
+    print result.success
+    if not result.success:
+        print result
+        success=False
+    if serverfile_servermap["bad"]:
+        print "The following from --serverfile were not found in role:"
+        for server in serverfile_servermap["bad"]:
+            print "\t" + server
+
+bl.finishup(success)
+

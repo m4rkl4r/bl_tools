@@ -1,0 +1,39 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",action="store",help="name of the job")
+parser.add_option("--jobrunkey", dest="jobrunkey",action="store",help="key identifying the job run")
+
+(option,args) = parser.parse_args()
+
+if not option.jobrunkey and option.job:
+    parser.print_help()
+    sys.exit(1)
+
+bl = blBase()
+
+(jobGroup,jobName)= blBase.normalizeArg(option.job,"--job")
+
+result = bl.runBlcli("JobRun","jobRunKeyToJobRunId",[option.jobrunkey])
+if result.success: jobrunid = result.returnValue
+else:
+    print result.error
+    sys.exit(1)
+
+result = bl.jobDBKey(jobGroup,jobName)
+if not result.success:
+    print result.error
+    sys.exit(1)
+else:
+    jobkey = result.returnValue
+
+result = bl.runBlcli("JobRun","abort",[jobkey,jobrunid])
+print result
+bl.finishup(result.success)

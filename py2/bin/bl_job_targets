@@ -1,0 +1,46 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job", help="If not fully  qualified with leading '/', $myGroup will be prepended")
+parser.add_option("--jobkey", dest="jobkey", help="job identifier key - like DBKey:SJobModelKeyImpl:99999999-9-999999999")
+
+(option,args) = parser.parse_args()
+
+bl=blBase()
+
+if option.job and option.jobkey or not (option.job or option.jobkey):
+    parser.print_help()
+    print
+    print "exactly one of --job and --jobkey is required."
+    sys.exit(1)
+
+targettypes="Servers"
+
+if option.jobkey:
+    dbkey = option.jobkey
+#result = bl.runBlcli("NSHScriptJob","findJobKeyByGroupAndName",[option.jobGroup,option.jobName])
+else:
+    (jobGroup,jobName)=blBase.normalizeArg(option.job,"--job")
+    result = bl.jobDBKey(jobGroup,jobName)
+    if result.success:
+        dbkey=result.returnValue
+    else: 
+        print result
+        print "job key could not be found"
+        bl.finishup(result.success)
+    result = bl.runBlcli("Job","getTargets",[dbkey,targettypes])
+    print "job dbkey:",dbkey
+    if result.success:
+        print "The following servers are targeted (some may reside in a server group):"
+        servers = result.returnValues[1:-1].split(", ")
+        for server in sorted(servers): print "\t" + server
+    else:
+        print result
+        sys.exit(1)

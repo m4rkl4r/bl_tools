@@ -1,0 +1,36 @@
+#!python
+from __future__ import print_function
+from blBase import blBase
+import blLib
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",help="job to delete. If not starting with '/', $myGroup will be prepended")
+
+(option,args) = parser.parse_args()
+
+(jobGroup,jobName)=blBase.normalizeArg(option.job,"--jobname")
+
+if not option.job:
+    parser.print_help()
+    print()
+    print("--jobname is required")
+    sys.exit(1)
+
+bl=blBase()
+
+
+print("removing",jobName,"from job group",jobGroup)
+for jobtype in blLib.blDeleteJobJobTypes:
+    result = bl.runBlcli(jobtype,"deleteJobByGroupAndName",[jobGroup,jobName])
+    if result.success:
+        print("job deleted:",str(result))
+        bl.finishup(result.success)
+
+print("could not delete job across available job types.  last attempt:",str(result))
+bl.finishup(result.success)

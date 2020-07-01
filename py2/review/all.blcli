@@ -1,0 +1,71 @@
+JobRun,abort - > not really used
+DepotFile,addFileToDepot - > ok
+NSHScript,addNSHScriptParameterByGroupAndName - > ok
+NSHScriptJob,addNSHScriptParameterValueByGroupAndName - > ok
+NSHScript,addNSHScriptToDepotByGroupName - > ok
+namespace,addPermission - > ok
+StaticServerGroup,addServerToServerGroupByName -> ok
+Job,addTargetGroups - > ok
+Job,addTargetServers - > ok
+namespace,applyAclPolicy - > ok
+namespace,applyAclTemplate - > ok
+NSHScript,clearNSHScriptParametersByGroupAndName -> ok
+NSHScriptJob,clearNSHScriptParameterValuesByGroupAndName -> ok
+Job,clearTargetGroup -> ok
+Job,clearTargetGroups -> ok
+Job,clearTargetServer -> ok
+Job,clearTargetServers -> ok
+Utility,convertModelType -> commented out
+DepotObject,copyDepotObject -> ok
+Job,copyJob -> ok
+grouptype,createGroupWithParentName -> ok
+NSHScriptJob,createNSHScriptJob -> ok
+StaticServerGroup,createServerGroup -> ok
+StaticServerGroup - deleteGroupByQualifiedName -> unused
+Group,deleteGroupByTypeAndQualifiedName -> unused
+jobtype - deleteJobByGroupAndName -> ok
+NSHScript - deleteNSHScriptByGroupAndName -> ok
+Job - executeAgainstServerGroupsForRunID -> ok
+Job - executeAgainstServersForRunID -> ok
+Job - executeJobAndWaitForRunID -> ok
+DepotGroup - findAllByParentGroup -> not used in prod scripts - just bl_lsdir.u i think
+Group - findAllByParentGroup ->  not used in prod scripts - just bl_lsdir.u i think
+grouptype + Group - findAllByParentGroup -> not used in prod scripts - just bl_lsdir.u i think
+JobGroup - findAllByParentGroup -> not used in prod scripts - just bl_lsdir.u i think
+JobRun - findAllRunKeysByJobKey, [jobkey]) -> ok
+NSHScriptJob - findJobKeyByGroupAndName -> ok
+Schedule - findScheduleDetailsByExecutingRole -> ok
+Schedule - findScheduleDetailsByExecutingUser -> ok
+Schedule - findScheduleDetailsByJobKey -> ok
+Group - getAQualifiedGroupName -> ok
+BatchJob - getDBKeyByGroupAndName -> getDBKeyByGroupAndName
+jobtype - getDBKeyByeroupAndName -> ok
+NSHScriptJob - getDBKeyByGroupAndName -> ok
+Job - getDBKeyByTypeGroupAndName -> unused
+DepotObject - getDBKeyByTypeStringGroupAndName -> ok
+JobRun - getEndTimeByRunKey -> ok
+File - getFileByteDataFromAgent -> not used in prod script
+Job - getGroupId -> ok
+JobRun - getLogItemsByJobRunId -> ok
+Server - getServerDBKeyByName -> ok
+JobRun - getServersStatusByJobRun -> ok
+JobRun - getStartTimeByRunKey -> ok
+Job - getTargets -> ok
+groupType - groupExists -> ok
+DepotGroup - groupNameToDBKey -> ok
+JobGroup - groupNameToDBKey -> ok
+namespace - groupNameToDBKey -> ok
+namespace - groupNameToId -> ok
+ServerGroup - groupNameToId -> ok
+ - grouptype,createGroupWithParentName -> ok
+JobRun - jobRunKeyToJobRunId -> ok
+DepotObject - listAllByGroup -> ok
+Job - listAllByGroup -> ok
+Server - listServersInGroup -> ok
+Job - removeAllSchedules -> ok
+namespace - removePermission -> ok
+StaticServerGroup - removeServerFromServerGroupByName -> ok
+DepotFile - replaceFileContents -> ok
+JobRun - getExecutingUserAndRoleByRunKey -> ok
+Job - schedMethod -> ok
+namespace - showPermissions -> ok

@@ -1,0 +1,109 @@
+#!python
+# 2019-07-18 - add support for servergroups
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotobject", dest="depotObject",help="depot file/directory being modified.  If it doesn't start with '/', $myGroup will be prepended.")
+parser.add_option("--jobobject", dest="jobObject",help="job file/directory being modified.  Directories are generic but jobs are limited to NSHScriptJobs.  If it doesn't start with '/', $myGroup will be prepended.")
+parser.add_option("--servergroup", dest="serverGroup",help="servergroup being modified.  If it doesn't start with '/', $myGroup will be prepended.")
+parser.add_option("--role", dest="role",help="the bladelogic role that will be modified")
+parser.add_option("--authname", dest="authName", help="the string identifying the permission you want to add")
+
+(option,args) = parser.parse_args()
+
+typecnt=0
+for obj in [option.depotObject, option.jobObject, option.serverGroup]:
+    if obj is not None: typecnt=typecnt+1
+if typecnt != 1:
+    parser.print_help()
+    print
+    print "Exactly one of --depotobject and --jobobject and --servergroup must be used."
+    sys.exit(1)
+
+object_path=None
+if option.depotObject is not None: object_path=option.depotObject
+if option.jobObject is not None: object_path=option.jobObject
+if option.serverGroup is not None: object_path=option.serverGroup
+
+if object_path is None or not option.role or not option.authName: # if --depotscript not spcefied, use the 'basename' value of --script
+    print "object_path",object_path
+    print "option.role",option.role
+    print "option.authName",option.authName
+    print "(object_path,option.role,option.authName)=",object_path,option.role, option.authName
+    parser.print_help()
+    sys.exit(1)
+else:
+    if option.depotObject is not None:
+        flag = "--depotobject"
+    if option.jobObject is not None:
+        flag = "--jobobject"
+    if option.serverGroup is not None:
+        flag = "--servergroup"
+    (grp,obj)= blBase.normalizeArg(object_path,flag)
+    if not obj:
+        objectFullPath=grp
+    else: objectFullPath=grp + "/" + obj
+    dirname = "/".join(objectFullPath.split("/")[:-1])
+    basename = objectFullPath.split("/")[-1]
+
+bl=blBase()
+print "looking up",objectFullPath
+
+fileDBKey=None
+dirDBKey=None
+dbkey=None
+if option.depotObject is not None:
+    fileDBKey=bl.depotObjectDBKey(dirname,basename)
+if option.jobObject is not None:
+    fileDBKey=bl.NSHScriptJobDBKey(dirname,basename)
+if fileDBKey and fileDBKey.success:
+    dbkey=fileDBKey.returnValue
+else: 
+    if option.depotObject is not None: namespace = "Depot"
+    if option.jobObject is not None:   namespace = "Job"
+    if option.serverGroup is not None:   namespace = "Server"
+    dirDBKey=bl.getGroupDBKey(namespace,objectFullPath)
+    if dirDBKey and dirDBKey.success:
+        dbkey=dirDBKey.returnValue
+
+if not dbkey:
+    if option.depotObject is not None: print "dbkey not found for",option.depotObject
+    if option.jobObject is not None: print "dbkey not found for",option.jobObject
+    print "fileDBKey:",fileDBKey
+    print "dirDBKey:", dirDBKey
+    sys.exit(1)
+
+
+result=None
+if fileDBKey and fileDBKey.success: 
+    print "found fileDBKey",fileDBKey.returnValue,"for",objectFullPath
+    if option.depotObject is not None: namespace="DepotObject"
+    if option.jobObject is not None: namespace="Job"
+    result = bl.runBlcli(namespace,"addPermission",[dbkey,option.role,option.authName])
+if dirDBKey and dirDBKey.success: 
+    print "found dirDBKey",dirDBKey.returnValue,"for",objectFullPath
+    if option.depotObject is not None: namespace="DepotGroup"
+    if option.jobObject is not None: namespace="JobGroup"
+    if option.serverGroup is not None: namespace="ServerGroup"
+    result = bl.runBlcli(namespace,"addPermission",[objectFullPath,option.role,option.authName])
+
+if result.success:
+        print "============ RESULTS =============="
+        print result.returnValue
+else:
+        print "addPermission:",result
+
+## here maybe DepotFile addFileToDepot(groupname,filelocation,name,description) -- all fields are normal strings
+#print "placing",script,"in",depotGroup,"as",depotScript
+#print "NSHScript","addNSHScriptToDepotByGroupName",[depotGroup,filetype,script,depotScript,fileDescription]
+#result= bl.runBlcli("NSHScript","addNSHScriptToDepotByGroupName",[depotGroup,filetype,script,depotScript,fileDescription])
+#print result
+
+bl.finishup(result.success)
+

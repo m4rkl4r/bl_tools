@@ -1,0 +1,61 @@
+#!python
+## created 5/15/2018 by Mark Price
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--dstfile", dest="dstFile",help="file to create - this will be a depot file and not an nshcript.  If not spec")
+parser.add_option("--srchost", dest="srcHost",help="host to copy the file from - defaults to localhost")
+parser.add_option("--srcfile", dest="srcFile",help="file to copy to the depot")
+parser.add_option("--replace", dest="replace",action="store_true",help="if file already exists, replace the contents")
+parser.add_option("--description", dest="description",help="description of the file")
+
+(option,args) = parser.parse_args()
+
+
+if not (option.srcFile):
+    parser.print_help()
+    print "--srcfile required"
+    sys.exit(1)
+
+bl=blBase()
+
+## description
+if not option.description: option.description=""
+## normalize dstFile
+if not option.dstFile: option.dstFile = option.srcFile
+(dstGroup,dstFile)=blBase.normalizeArg(option.dstFile,"--dstfile")
+## normalize FQDN
+if option.srcHost: fqdn = bl.blFQDN(option.destHost)
+else: fqdn = bl.localBlFQDN()
+
+if not fqdn:
+    print "source host does not appear to be in this bladelogic group."
+    bl.finishup(False)
+
+option.srcFile = os.path.normpath(option.srcFile)
+
+src = "//" + fqdn + option.srcFile
+dest = dstGroup + "/" + dstFile
+
+print "copy",src,"to",dest
+
+result = bl.runBlcli("DepotFile","addFileToDepot",[dstGroup,src,dstFile,option.description])
+print "add file:", result.success
+
+if not result.success: print "File add failed with: ", result.error
+if not result.success and not option.replace:
+    print "you can try --replace."
+    bl.finishup(result.success)
+if not result.success and option.replace:
+    print "---- File add failed.  Trying to update contents of existing depot file. ----"
+    result = bl.runBlcli("DepotFile","replaceFileContents",[dstGroup,dstFile,src])
+    if result.success: print "overwrite file:",result.success
+    else: print "overwrite file:", result
+
+bl.finishup(result.success)

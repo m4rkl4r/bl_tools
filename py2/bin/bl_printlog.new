@@ -1,0 +1,194 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser(usage="""bl_printlog [options]\n
+    ex: bl_printlog --job chkUname.nsh -- print logs from the last run initiated by current user and role
+    ex: bl_printlog --job chkUname.nsh --jobrunkey DBKey:SJobRunModelKeyImpl:65836102-531990254 -- print logs from a specific job run"
+
+""")
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",action="store",help="//WorkAreas/path/to/your/job - if not fully qualified then relative to env varable $myGroup")
+parser.add_option("--jobrunkey", dest="jobrunkey",action="store",help="key identifying the job run")
+parser.add_option("--jobrunid", dest="jobrunid",action="store",help="runid identifying the job run")
+parser.add_option("--lastrun", dest="lastrun",action="store_true",help="filter down to the most recent match (default unless --lookup is specified)")
+parser.add_option("--anyone", dest="anyone",action="store_true",help="search for any user or role")
+parser.add_option("--user", dest="user",action="store",help="filter by user - like USERNAME or USERNAME@DOMAIN - USERNAME will match any domain")
+parser.add_option("--role", dest="role",action="store",help="filter by bladelogic role name")
+parser.add_option("--lookup", dest="lookup",action="store_true",help="print metadata: user/time/role of all jobruns returned - do not print logs")
+parser.add_option("--starttime", dest="starttime",action="store",help="filter by start time at or after YYYY/MM/DD HH:MM:SS")
+parser.add_option("--endtime", dest="endtime",action="store",help="filter by start time at or before YYYY/MM/DD HH:MM:SS")
+#parser.add_option("--outputfile", dest="outputfile",action="store",help="output goes to a log file")
+
+(option,args) = parser.parse_args()
+
+if (option.jobrunkey and (option.lastrun or option.anyone or option.user or option.role)):
+    parser.print_help()
+    print
+    print "--jobrunkey is incompatible with --lastrun, --anyone, --user, --role"
+    sys.exit(1)
+if (option.anyone and (option.user or option.role)):
+    parser.print_help()
+    print
+    print "--anyone is incompatible with --user and --role"
+    sys.exit(1)
+matcher = re.compile("[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$")
+if (option.starttime and not matcher.match(option.starttime) or option.endtime and not matcher.match(option.endtime)):
+    parser.print_help()
+    print
+    print "--startime and --endtime must be of the form YYYY/MM/DD HH:MM:SS"
+    sys.exit(1)
+if not option.job:
+    parser.print_help()
+    print
+    print "--job is required"
+    sys.exit(1)
+
+bl = blBase()
+
+resultkey=None
+jobkey=None
+jobrunkey=option.jobrunkey
+jobresultkey=None
+jobrunid=option.jobrunid
+## global diction ary of runkey info
+runkeyinfo=dict()
+(jobGroup,jobName)= blBase.normalizeArg(option.job,"--job")
+
+def getRunKeyInfo(jobkey,option):
+    if option.jobrunkey:
+        allrunkeys = [option.jobrunkey]
+    else:
+        result = bl.runBlcli("JobRun","findAllRunKeysByJobKey", [jobkey])
+        print result
+        if result.success:
+            allrunkeys = [x.strip() for x in result.returnValue.split("\n") if x]
+        else:
+            print result.error
+            bl.finishup(result.success)
+
+    print("allrunkeys:", allrunkeys)
+    for k in allrunkeys:
+        runkeyinfo[k]=dict()
+        runkeyinfo[k]["start"] = bl.runBlcli("JobRun","getStartTimeByRunKey",[k,"yyyy/MM/dd HH:mm:ss"]).returnValue
+        runkeyinfo[k]["end"] = bl.runBlcli("JobRun","getEndTimeByRunKey",[k,"yyyy/MM/dd HH:mm:ss"]).returnValue
+        (runuser,runrole)=bl.runBlcli("JobRun","getExecutingUserAndRoleByRunKey",[k]).returnValue.split(":")
+        runkeyinfo[k]["role"] = runrole
+        runkeyinfo[k]["user"] = runuser
+
+def keysByReverseTime(keylist=None):
+    """ if keylist=None, use runkeyinfo[]; otherwise, use the given keys """
+    if keylist == None:
+        keylist = runkeyinfo.keys()
+    return sorted(keylist, key=lambda x: runkeyinfo[x]["start"], reverse=True)
+
+def keysByUser(user,keylist=None):
+    """ if keylist=None, use runkeyinfo[]; otherwise, use the given keys """
+    if keylist == None: 
+        keylist = runkeyinfo.keys()
+    just_user="^"+user+"@"
+    ## if just nbid, match against any domain.  otherwise, full match required, i.e. username@domain,  but case insensitive
+    return [k for k in keylist if (re.search(just_user,runkeyinfo[k]["user"],re.IGNORECASE) or re.match(user,runkeyinfo[k]["user"],re.IGNORECASE))]
+
+def keysByRole(role,keylist=None):
+    """ if keylist=None, use runkeyinfo[]; otherwise, use the given keys """
+    if keylist == None:
+        keylist = runkeyinfo.keys()
+    return [k for k in keylist if re.match(role, runkeyinfo[k]["role"],re.IGNORECASE)]
+
+def startAfterStartTime(starttime,keylist=None):
+    """  """
+    """ start time should be in YYYY/MM/DD HH:MM:SS format """
+    """ if keylist=None, use runkeyinfo[]; otherwise, use the given keys """
+    if keylist == None:
+        keylist = runkeyinfo.keys()
+    return [k for k in keylist if runkeyinfo[k]["start"]>=starttime]
+
+def startBeforeEndTime(endtime,keylist=None):
+    """ start time should be in YYYY/MM/DD HH:MM:SS format """
+    """ if keylist=None, use runkeyinfo[]; otherwise, use the given keys """
+    if keylist == None:
+        keylist = runkeyinfo.keys()
+    return [k for k in keylist if runkeyinfo[k]["start"]<=endtime]
+
+def printKeys(keylist=None):
+    """ if keylist=None, use runkeyinfo[]; otherwise, use the given keys """
+    if keylist == None:
+        keylist = runkeyinfo.keys()
+    print "========== jobruns found =========="
+    for k in keylist:
+        print k,runkeyinfo[k]["role"],runkeyinfo[k]["user"],runkeyinfo[k]["start"],runkeyinfo[k]["end"]
+
+## get job's dbkey
+#result = bl.runBlcli("NSHScriptJob","findJobKeyByGroupAndName",[jobGroup,jobName])
+result = bl.jobDBKey(jobGroup,jobName)
+if result.success: jobkey=result.returnValue
+else:
+    print result.error
+    bl.finishup(result.success)
+
+## lookup metadata on job runs, into global dict runkeyinfo
+print("getRunKeyInfo(",jobkey,option,")")
+if not jobrunid:
+    getRunKeyInfo(jobkey,option)
+    allrunkeys = keysByReverseTime()
+## if option.jobrunkey is given, there is nothing to filter:
+if jobrunid or jobrunkey: pass
+## otherwise, filter by given criteria
+else:
+    if option.user:
+        allrunkeys = keysByUser(option.user,allrunkeys)
+    if option.role:
+        allrunkeys = keysByRole(option.role,allrunkeys)
+    if not option.user and not option.role and not option.anyone:
+        allrunkeys = keysByUser(bl.getMyUser(),allrunkeys)
+        allrunkeys = keysByRole(bl.getMyRole(),allrunkeys)
+    if option.starttime:
+        allrunkeys = startAfterStartTime(option.starttime,allrunkeys)
+    if option.endtime:
+        allrunkeys = startBeforeEndTime(option.endtime,allrunkeys)
+    if option.anyone: pass
+    ## after all other filtering done, pick the most recent one
+    if option.lastrun:
+        # pick the first (most recent) runkey
+        if len(allrunkeys)>0: 
+            allrunkeys=allrunkeys[0:1]
+
+
+if option.lookup:
+    printKeys(allrunkeys)
+    sys.exit(0)
+
+#if len(allrunkeys)>1:
+#    print "debug: this can't be: there's more than one key:"
+#    printKeys(allrunkeys)
+#    sys.exit(1)
+
+if not jobrunid:
+    if len(allrunkeys)>0: 
+        jobrunkey = allrunkeys[0]
+    else:
+        print "no matching runkeys found"
+        sys.exit(0)
+    
+    result = bl.runBlcli("JobRun","jobRunKeyToJobRunId",[jobrunkey])
+    if result.success: jobrunid = result.returnValue
+    else:
+        print result.error
+        bl.finishup(result.success)
+    printKeys([jobrunkey])
+
+## print the logs
+result = bl.runBlcli("JobRun","getLogItemsByJobRunId", [jobkey,jobrunid])
+if not result.success:
+    print result.error
+    bl.finishup(result.success)
+else:
+    print "========== jobrun log =========="
+    print result.returnValue
+
+bl.finishup(result.success)

@@ -1,0 +1,20 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--servergroup", dest="serverGroup",help="Example: /SOME/BL/SERVER/GROUP")
+(option,args) = parser.parse_args()
+
+bl=blBase()
+
+result = bl.runBlcli("StaticServerGroup","deleteGroupByQualifiedName",[option.serverGroup])
+
+print result
+
+bl.finishup(result.success)

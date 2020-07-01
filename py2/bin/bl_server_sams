@@ -1,0 +1,26 @@
+#!python
+import blLib
+from blBase import blBase, blSAMs, blRoles
+from optparse import OptionParser
+import sys
+import re
+
+parser = OptionParser(usage="bl_server_sams host")
+blBase.setUnsupported(parser)
+
+(option,args) = parser.parse_args()
+
+if len(sys.argv)!=2:
+	parser.print_help()
+	sys.exit(1)
+
+host=sys.argv[1]
+if re.search("\.",host):
+	print blSAMs(host)
+else:
+	bl=blBase()
+	fqdn=bl.blFQDN(host)
+	if not fqdn:
+		fqdn=bl.inventoryFQDN(host)
+	if not fqdn: print []
+	else: print blSAMs(fqdn)

@@ -1,0 +1,28 @@
+#!python
+import blLib
+from blBase import blBase, blSAMs, blRoles
+from optparse import OptionParser
+import sys
+import re
+
+parser = OptionParser(usage="bl_server_roles_custom host")
+blBase.setUnsupported(parser)
+
+(option,args) = parser.parse_args()
+
+if len(sys.argv)!=2:
+	parser.print_help()
+	sys.exit(1)
+
+host=sys.argv[1]
+if re.search("\.",host):
+        print filter(lambda x: re.search("CUSTOM",x), blRoles(host))
+else:
+	bl=blBase()
+	fqdn=bl.blFQDN(host)
+	if not fqdn:
+		fqdn=bl.inventoryFQDN(host)
+	if not fqdn: 
+		print ["no fqdn found"]
+		sys.exit(1)
+	else: print filter(lambda x: re.search("CUSTOM",x), blRoles(fqdn))

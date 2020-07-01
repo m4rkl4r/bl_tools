@@ -1,0 +1,52 @@
+#!python
+from __future__ import print_function
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser, OptionGroup
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotscript", dest="depotScript",help="where to place the script in the depot.  If it doesn't start with '/', $myGroup will be prepended.  If this option is not specified, --script's 'basename' will be placed in $myGroup")
+parser.add_option("--name", dest="paramName", help="the name of the param you are adding (required)")
+parser.add_option("--desc", dest="paramDesc", help="describe the param")
+parser.add_option("--value", dest="paramValue", help="value for the argument")
+parser.add_option("--options", dest="options", default=7, help="--options=n - Set to the sum of desired flag values:")
+og = OptionGroup(parser, "Values for the --options parameter (default 7):",
+                        "1 = takes value 2 = not empty 4 = editable 8 = param flag required")
+parser.add_option_group(og)
+
+(option,args) = parser.parse_args()
+
+
+if not option.depotScript:
+    parser.print_help()
+    print()
+    print("--depotscript is mandatory")
+    sys.exit(1)
+if not option.paramName: 
+    parser.print_help()
+    print("--name is mandatory")
+    sys.exit(1)
+if option.paramValue is None:
+    parser.print_help()
+    print("--value is mandatory")
+    sys.exit(1)
+else: paramName=option.paramName
+
+(depotGroup,depotScript)= blBase.normalizeArg(option.depotScript,"--depotscript")
+bl=blBase()
+
+paramDesc=""
+paramValue=""
+if option.paramDesc: paramDesc==option.paramDesc
+
+print("giving",depotGroup + "/" + depotScript,"param with name",paramName,"and value",option.paramValue,"and description \"" + paramDesc + "\" and options="+str(option.options))
+print("NSHScript","addNSHScriptParamaterByGroupAndName",str([depotGroup,depotScript,paramName,paramDesc,option.paramValue,option.options]))
+result = bl.runBlcli("NSHScript","addNSHScriptParameterByGroupAndName",[depotGroup,depotScript,paramName,paramDesc,option.paramValue,option.options])
+print(result)
+
+bl.finishup(result.success)
+

@@ -1,0 +1,123 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job", help="If not fully  qualified with leading '/', $myGroup will be prepended")
+parser.add_option("--all", action="store_true",help="delete all servers.  This option does not yet support server groups, and will return True even though the groups remain.  They can be specified with --servergroups")
+parser.add_option("--servers", dest="servers",help="comma delimited list of server names (shortname or fqdn)")
+parser.add_option("--serverfile", dest="serverFile",help="filename with newline delimited list of servers (shortname or fqdn)")
+parser.add_option("--servergroups", dest="serverGroups",help="comma delimited list of server groups in /qualified/group/name format")
+(option,args) = parser.parse_args()
+
+bl=blBase()
+
+success=True
+
+if not option.job:
+    parser.print_help()
+    print
+    print "--job is required"
+    sys.exit(1)
+
+(jobGroup,jobName)=blBase.normalizeArg(option.job,"--job")
+if not (option.servers or option.serverFile or option.serverGroups or option.all):
+    parser.print_help()
+    print
+    print "at least one of --servers,serverfile,--servergroups, --all is required"
+    sys.exit(1)
+
+if option.all:
+    result = bl.jobDBKey(jobGroup,jobName)
+    dbkey=None
+    if result.success:
+        dbkey = result.returnValue
+        result = bl.runBlcli("Job","clearTargetServers",[dbkey])
+        print result
+        result = bl.jobDBKey(jobGroup,jobName)
+        if result.success:
+            dbkey = result.returnValue
+            result = bl.runBlcli("Job","clearTargetGroups",[dbkey])
+            if not result.success:
+                print "ERROR: could not clear target server groups"
+                success = False
+            print result
+        else:
+            print "Could not look up job key for",jobGroup + "/" + jobName
+            print "target groups are not being deleted"
+
+        result = bl.jobDBKey(jobGroup,jobName)
+        if result.success:
+            dbkey = result.returnValue
+            result = bl.runBlcli("Job","getTargets",[dbkey,"Servers"])
+            servers = result.returnValues[1:-1].split(", ")
+            print "These hosts were not removed:"
+            for server in servers: 
+                print "\t",server
+        else:
+            print "Could not look up job key for",jobGroup + "/" + jobName
+            print "remaining servers are not being reported"
+        #### the old way
+        #result = bl.runBlcli("Job","getTargets",[dbkey,"Servers"])
+        #if result.success:
+        #    servers = result.returnValues[1:-1].split(", ")
+        #    print "removing all servers.  servers in servergroups are not removed at this stage, even if success reported:"
+        #    for server in servers:
+        #        print "\tremoving", server + ":",
+        #        result = bl.delServerFromJob(jobGroup,jobName,server)
+        #        print result.success
+        #        if not result.success: 
+        #            print result
+        #            success=False
+        #else:
+        #    print "Could not look up targets for",jobGroup + "/" + jobName
+        #    print "--all option is being skipped"
+    else:
+        print "Could not look up job key for",jobGroup + "/" + jobName
+        print "--all option is being skipped"
+
+if option.serverGroups:
+    for group in option.serverGroups.split(","):
+        (groupbase,groupname)=blBase.normalizeArg(group,"--servergroups="+group)
+        servergroup=groupbase + "/" + groupname
+        print "removing",servergroup,"from",jobGroup + "/" + jobName
+        result = bl.delServerGroupFromJob(jobGroup,jobName,servergroup)
+        print result.success
+        if not result.success: 
+            print result
+            success=False
+
+if option.servers:
+    print "removing --servers from job:"
+    servers = option.servers.split(",")
+    servermap = bl.validateServerList(servers)
+    if servermap["bad"]: 
+        print "the following were not found in role:"
+        for server in servermap["bad"]: print "\t" + server
+    for server in servermap["good"]:
+        print "removing", server + ":",
+        result = bl.delServerFromJob(jobGroup,jobName,server)
+        print result.success
+        if not result.success: 
+            print result
+            success=False
+
+if option.serverFile:
+    print "removing --serverfile from job:"
+    servers = map(lambda x: x.strip(),open(option.serverFile,"r").readlines())
+    servermap = bl.validateServerList(servers)
+    if servermap["bad"]: 
+        print "the following were not found in role:"
+        for server in servermap["bad"]: print "\t" + server
+    for server in servermap["good"]:
+        print "removing",server + ":",
+        result = bl.delServerFromJob(jobGroup,jobName,server)
+        print result.success
+        if not result.success: success=False
+
+bl.finishup(result.success)

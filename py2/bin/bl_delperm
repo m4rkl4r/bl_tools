@@ -1,0 +1,94 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotobject", dest="depotObject",help="depot file/directory being modified.  If it doesn't start with '/', $myGroup will be prepended.")
+parser.add_option("--jobobject", dest="jobObject",help="job file/directory being modified.  Directories are generic but jobs are limited to NSHScriptJobs.  If it doesn't start with '/', $myGroup will be prepended.")
+parser.add_option("--role", dest="role")
+parser.add_option("--authname", dest="authName", help="the string identifying the permission you want to remove")
+
+(option,args) = parser.parse_args()
+
+if option.depotObject is not None and option.jobObject is not None:
+    parser.print_help()
+    print
+    print "only one of --depotobject and --jobobject can be used at once"
+    sys.exit(1)
+
+object_path=None
+if option.depotObject is not None: object_path=option.depotObject
+if option.jobObject is not None: object_path=option.jobObject
+
+if object_path is None or not option.role or not option.authName: # if --depotscript not spcefied, use the 'basename' value of --script
+    print "(object_path,option.role,option.authName)=",object_path,option.role, option.authName
+    parser.print_help()
+    sys.exit(1)
+else:
+    if option.depotObject is not None: flag = "--depotobject"
+    if option.jobObject is not None: flag = "--jobobject"
+    (grp,obj)= blBase.normalizeArg(object_path,flag)
+    if option.jobObject: (grp,obj)= blBase.normalizeArg(option.jobObject,"--jobobject")
+    if not obj:
+        objectFullPath=grp
+    else: objectFullPath=grp + "/" + obj
+    dirname = "/".join(objectFullPath.split("/")[:-1])
+    basename = objectFullPath.split("/")[-1]
+
+bl=blBase()
+print "looking up",objectFullPath
+
+fileDBKey=None
+dirDBKey=None
+dbkey=None
+if option.depotObject is not None:
+    fileDBKey=bl.depotObjectDBKey(dirname,basename)
+if option.jobObject is not None:
+    fileDBKey=bl.NSHScriptJobDBKey(dirname,basename)
+if fileDBKey and fileDBKey.success:
+    dbkey=fileDBKey.returnValue
+else: 
+    if option.depotObject is not None: namespace = "Depot"
+    if option.jobObject is not None:   namespace = "Job"
+    dirDBKey=bl.getGroupDBKey(namespace,objectFullPath)
+    if dirDBKey and dirDBKey.success:
+        dbkey=dirDBKey.returnValue
+
+if not dbkey:
+    if option.depotObject is not None: print "dbkey not found for",option.depotObject
+    if option.jobObject is not None: print "dbkey not found for",option.jobObject
+    print "fileDBKey:",fileDBKey
+    print "dirDBKey:", dirDBKey
+    sys.exit(1)
+
+
+result=None
+if fileDBKey and fileDBKey.success: 
+    print "found fileDBKey",fileDBKey.returnValue,"for",objectFullPath
+    if option.depotObject is not None: namespace="DepotObject"
+    if option.jobObject is not None: namespace="Job"
+    result = bl.runBlcli(namespace,"removePermission",[dbkey,option.role,option.authName])
+if dirDBKey and dirDBKey.success: 
+    print "found dirDBKey",dirDBKey.returnValue,"for",objectFullPath
+    if option.depotObject is not None: namespace="DepotGroup"
+    if option.jobObject is not None: namespace="JobGroup"
+    result = bl.runBlcli(namespace,"removePermission",[objectFullPath,option.role,option.authName])
+
+if result.success:
+    print "============ RESULTS =============="
+    print result.returnValue
+else:
+    print "delPermission:",result
+
+## here maybe DepotFile addFileToDepot(groupname,filelocation,name,description) -- all fields are normal strings
+#print "placing",script,"in",depotGroup,"as",depotScript
+#print "NSHScript","addNSHScriptToDepotByGroupName",[depotGroup,filetype,script,depotScript,fileDescription]
+#result= bl.runBlcli("NSHScript","addNSHScriptToDepotByGroupName",[depotGroup,filetype,script,depotScript,fileDescription])
+#print result
+
+bl.finishup(result.success)

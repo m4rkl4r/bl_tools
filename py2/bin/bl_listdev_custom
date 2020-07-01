@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+. /unixworks/bl_tools/etc/bl_tools.sh
+
+if test -z "$BL_LLE_PROFILE"; then
+    echo Please define BL_LLE_PROFILE in \~/.bl_tools/blvars.sh
+    exit 1
+fi
+bl_conf "$BL_LLE_PROFILE" > /dev/null
+bl_lsdir.u --servergroup="/Servers by Role/$BL_LLE_ROLE" | egrep "^\s" | sed -e 's/"\|\s//g' | egrep -v "^$" | grep -v IDgroupdescription

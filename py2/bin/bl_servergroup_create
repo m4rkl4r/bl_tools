@@ -1,0 +1,93 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+from subprocess import check_output
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--servergroup", dest="serverGroup",help="Example: /SOME/BL/SERVER/GROUP")
+parser.add_option("--serverlist", dest="serverList",help="comma delimited list.  short name or long name - long name must be exact.")
+parser.add_option("--serverfile", dest="serverFile",help="newline delimited file.  short name or long name - long name must be exact.  Results will print to filename.result")  
+parser.add_option("--force",dest="force",action="store_true",help="create group and add available servers even if some are not found")
+parser.add_option("--verbose",dest="verbose",action="store_true",help="create group and add available servers even if some are not found")
+(option,args) = parser.parse_args()
+
+bl=blBase()
+
+if option.serverList and option.serverFile:
+    parser.print_help()
+    print "only one of --serverlist and --serverfile can be used"
+    sys.exit(1)
+
+serverlist=None
+if option.serverList:
+    serverlist=option.serverList.split(",")
+if option.serverFile:
+    f=open(option.serverFile,"r")
+    serverlist = f.readlines()
+    serverlist = map(lambda x: x.strip(),serverlist)
+    f.close()
+
+servermap=None
+if option.serverList or option.serverFile:
+    servermap=bl.validateServerList(serverlist,option.verbose)
+
+    if servermap["bad"]:
+        print "These servers were not found in bladelogic:"
+        for server in servermap["bad"]:
+            print "\t" + str(server)
+        if not option.force:
+            print "--force not specified. exiting."
+            sys.exit(1)
+        else: 
+            print "--force was specified. continuing."
+
+# split out group name, and parent group
+groupname = option.serverGroup.split("/")[-1]
+parentgroup = "/".join(option.serverGroup.split("/")[0:-1])
+print "groupname",groupname
+print "parentgroup",parentgroup
+
+# get parent group ID 
+result = bl.runBlcli("ServerGroup","groupNameToId",[parentgroup])
+groupid=None
+if result.success:
+    parentgroupid=result.returnValue
+else:
+    print "couldn't find parent group",parentgroup
+    print "exiting."
+    print result
+    bl.finishup(result.success)
+
+# create server group
+#print "ServerGroup","createStaticServerGroup",[groupname,parentgroupid]
+#result = bl.runBlcli("ServerGroup","createStaticServerGroup",[groupname,parentgroupid])
+print "StaticServerGroup","createServerGroup",[groupname,parentgroupid]
+result = bl.runBlcli("StaticServerGroup","createServerGroup",[groupname,parentgroupid])
+print result
+if not result.success: 
+    print "Could not create group"
+    print "exiting."
+    bl.finishup(result.success)
+
+# get new group's ID
+result = bl.runBlcli("ServerGroup","groupNameToId",[option.serverGroup])
+if not result.success:
+    print "could not find created group",option.serverGroup
+    print "exiting."
+    bl.finishup(result.success)
+groupid=result.returnValue
+
+# if list of servers specified, add them to the group
+if servermap:
+    for server in servermap["good"]:
+        print "adding",server,"to",groupname,
+        result = bl.runBlcli("StaticServerGroup","addServerToServerGroupByName",[groupid,server])
+        print result.success
+        if not result.success: success=False
+
+bl.finishup(result.success)

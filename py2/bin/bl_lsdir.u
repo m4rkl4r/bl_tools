@@ -1,0 +1,137 @@
+#!python
+import logging.config
+#logging.config.dictConfig({
+#    'version': 1,
+#    'formatters': {
+#        'verbose': {
+#            'format': '%(name)s: %(message)s'
+#        }
+#    },
+#    'handlers': {
+#        'console': {
+#            'level': 'DEBUG',
+#            'class': 'logging.StreamHandler',
+#            'formatter': 'verbose',
+#        },
+#    },
+#    'loggers': {
+#        'zeep.transports': {
+#            'level': 'DEBUG',
+#            'propagate': True,
+#            'format': '%(asctime)s %(name)s %(LeveLname)s %(message)s',
+#            'handlers': ['console'],
+#        },
+#    }
+#})
+import blLib
+from blBase import blBase
+from optparse import OptionParser
+import sys
+from sys import argv
+import re
+import os
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--jobgroup", dest="JobGroup")
+parser.add_option("--depotgroup", dest="DepotGroup")
+parser.add_option("--servergroup", dest="ServerGroup")
+parser.add_option("--fail-quick", dest="failquick",action="store_true")
+
+## this file is non-complient because of  findAllByParentGroup
+## i doubt this is going anywhere but BMC wants to keep us on our toes
+## these supported functions would get us everything but subdirectories in a depotgroup
+#We might get somewhere with these two, which 
+#GenericObject - getBlObjectsByCondition
+#GenericObject - getBlObjectsByPropertyCondition
+#
+#depotobject listallbygroup shows non-directories
+#
+#Group listAllJobGroupMembers shows both files and directories in a job group
+#
+#Server - listServersInGroup
+#Server - findServerObjectsByGroup - shows all servers in a group
+#ServerGroup - listChildGroupsInGroup - shows subgroups
+#
+
+(option,args) = parser.parse_args()
+
+sum=0
+for o in [option.JobGroup,option.DepotGroup,option.ServerGroup]:
+    if not o is None:
+        sum=sum+1
+if sum != 1:
+    parser.print_help()
+    print
+    print "There can only be one group type."
+    sys.exit(1)
+
+#if (option.JobGroup and option.DepotGroup) or not (option.JobGroup or option.DepotGroup):
+#    print "USAGE: bl_ls (--Job <job group> | --Depot <depot group>)"
+#    sys.exit(1)
+if not option.JobGroup is None:
+    (parent,child)=blBase.normalizeArg(option.JobGroup,"--jobgroup")
+    if child == '': option.JobGroup=parent
+    else: option.JobGroup=parent+"/"+child
+    group=option.JobGroup    
+    print "Listing jobGroup",option.JobGroup
+    grouptype="Job"
+    header="Jobs"
+elif not option.DepotGroup is None:
+    print "depotGroup:",option.DepotGroup
+    parent,child=blBase.normalizeArg(option.DepotGroup,"--depotgroup")
+    print "depotGroup parent/child:",parent, child
+    if child == '': option.DepotGroup=parent
+    else: option.DepotGroup=parent+"/"+child
+    group=option.DepotGroup
+    print "Listing DepotGroup",option.DepotGroup
+    grouptype="Depot"
+    header = "Files"
+elif not option.ServerGroup is None:
+    parent,child=blBase.normalizeArg(option.ServerGroup,"--servergroup")
+    if child == '': option.ServerGroup=parent
+    else: option.ServerGroup=parent+"/"+child
+    group=option.ServerGroup
+    print "Listing ServerGroup",option.ServerGroup
+    grouptype="Server"
+    header = "Servers"
+
+bl=blBase(failquick=option.failquick)
+groupID=None
+#result = bl.listGroup("Smart_Job",group+"/getsmart")
+#print result
+#result = bl.listGroupFolders("Job",group)
+#bl.groupDBKey(group);
+#print bl.runBlcli("File","getFileByteDataFromAgent",['fqdn here', /etc/passwd","null"])
+#print bl.runBlcli("File","getFileDataFromAgent",['fqdn here',"/etc/passwd","null"])
+#sys.exit(0)
+#result = bl.listGroupFiles("Depot",group)
+#result = bl.listGroup("Depot",group)
+print "Listing",group + ":"
+result=bl.getGroupID(grouptype,group)
+if result.success:
+    groupid=result.returnValue
+else:
+    print grouptype+"Group",group,"not found."
+    sys.exit(1)
+result = bl.runBlcli(grouptype + "Group","findAllByParentGroup",[groupid])
+if not result.success:
+    print "Couldn't look up subgroups."
+else:
+    subgroups = result.returnValues[1:-1].split(", Id = ")
+    print "subgroups:"
+    print "\tID\t\tgroup\tdescription"
+    for g in subgroups:
+        #print "g--"+g+"--g"
+        g=g.split(";")
+        g=map(lambda x: x.split(" = ")[-1], g)
+        if len(g)>1: g[1]="\""+g[1]+"\""
+        if len(g)>2: g[2]="\""+g[2]+"\""
+        print "\t" + "\t".join(g)
+result = bl.listGroupFiles(grouptype,group)
+if result.success:
+    print header + ":"
+    for item in result.returnValue.split("\n"):
+        print "\t\"" + item + "\""
+
+bl.finishup(result.success)

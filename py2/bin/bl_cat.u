@@ -1,0 +1,32 @@
+#!python
+from __future__ import print_function
+from blBase import blBase
+import sys
+import re
+
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--Host", dest="Host")
+parser.add_option("--File", dest="File")
+
+(option,args) = parser.parse_args()
+
+bl=blBase()
+
+servers = bl.validateServerList([option.Host])["good"]
+if len(servers):
+    Host = servers[0]
+if not option.Host:
+    print(option.Host, "not found.")
+    sys.exit(1)
+
+result = bl.catFile(Host,option.File)
+if result.success:
+    print(result.returnValue,end=' ')
+    sys.exit(0)
+else:
+    print(result)
+    sys.exit(1)

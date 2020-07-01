@@ -1,0 +1,39 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotscript", dest="depotScript",help="Ex: --depotscript /BL/REPO/PATH/TO/SCRIPT.sh - prepends $myGroup if not starting with a '/'")
+parser.add_option("--job", dest="job",help="Defaults to the value of --depotscript.  prepends $myGroup if not starting with a '/'")
+parser.add_option("--jobdesc", dest="jobDesc",help="Optional. A note describing the job.")
+parser.add_option("--parallelize", dest="parallelize",help="Integer.  The number of hosts to run on at once.")
+(option,args) = parser.parse_args()
+
+if not option.depotScript:
+    parser.print_help()
+    print
+    print "--depotscript, is mandatory."
+    print "If it is not a fully qualified path, $myGroup will be prepended"
+    sys.exit(1)
+
+(depotGroup,depotScript)=blBase.normalizeArg(option.depotScript,"--depotscript")
+if not option.job: 
+    (jobGroup,jobName)=(depotGroup,depotScript)
+else: 
+    (jobGroup,jobName)=blBase.normalizeArg(option.job,"--job")
+
+if not option.parallelize: option.parallelize=1
+if not option.jobDesc: option.jobDesc=""
+
+bl=blBase()
+
+print                "NSHScriptJob","createNSHScriptJob",[jobGroup,jobName,option.jobDesc,depotGroup,depotScript,option.parallelize]
+result = bl.runBlcli("NSHScriptJob","createNSHScriptJob",[jobGroup,jobName,option.jobDesc,depotGroup,depotScript,option.parallelize])
+print result
+
+bl.finishup(result.success)

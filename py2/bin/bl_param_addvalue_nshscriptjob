@@ -1,0 +1,36 @@
+#!python
+from __future__ import print_function
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",help="Job to modify.  If it doesn't start with '/', $myGroup will be prepended.  If this option is not specified, --script's 'basename' will be placed in $myGroup")
+parser.add_option("--index", dest="paramIndex", type="int", help="index number of parameter - count from 0")
+parser.add_option("--value", dest="paramValue", help="value to set for the argument")
+
+(option,args) = parser.parse_args()
+
+if not option.job or option.paramIndex is None or option.paramValue is None:
+    parser.print_help()
+    print()
+    print("--job, --ndex, --value are mandatory")
+    sys.exit(1)
+else: paramIndex=option.paramIndex
+
+(depotGroup,depotScript)= blBase.normalizeArg(option.job,"--job")
+bl=blBase()
+
+paramValue=""
+
+#print("giving",depotGroup + "/" + depotScript,"param with name",paramName,"and value",option.paramValue,"and description \"" + paramDesc + "\"")
+#print("NSHScript","addNSHScriptParamaterByGroupAndName",str([depotGroup,depotScript,paramName,paramDesc,option.paramValue,3]))
+result = bl.runBlcli("NSHScriptJob","addNSHScriptParameterValueByGroupAndName",[depotGroup,depotScript,paramIndex,option.paramValue])
+print(result)
+
+bl.finishup(result.success)
+

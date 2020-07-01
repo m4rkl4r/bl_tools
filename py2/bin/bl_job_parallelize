@@ -1,0 +1,49 @@
+#!python
+# create 2019-07-22 by mark price
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",help="The job to modify.  If not starting with '/', $myGroup will be prepended")
+parser.add_option("--parallelize", dest="N",help="the number of parallel jobs to run at execution time (between 1 and 250)")
+
+(option,args) = parser.parse_args()
+
+if not (option.job):
+    parser.print_help()
+    print "--job required"
+    sys.exit(1)
+
+N=int(option.N)
+if N <1 or N > 250:
+    parser.print_help
+    print "--parallelize=N - N must be between 1 and 250 inclusive"
+    sys.exit(1)
+
+(jobGroup,jobName)=blBase.normalizeArg(option.job,"--job")
+
+bl=blBase()
+
+## here maybe DepotFile addFileToDepot(groupname,filelocation,name,description) -- all fields are normal strings
+print "findingjob ", jobGroup + "/" + jobName + ":"
+result = bl.jobDBKey(jobGroup,jobName)
+
+if result is None:
+    print "couldn't find", jobGroup + "/" + jobName + "."
+    bl.finishup(False)    
+jobdbkey=None
+if result.success:
+    jobdbkey=result.returnValue
+else:
+    print "couldn't find dbkey for", jobGroup + "/" + jobName + "."
+    sys.exit(1)
+
+result = bl.runBlcli("Job","setPropertyValue",[jobdbkey, "PARALLEL_PROCS*",str(option.N)])
+print result
+
+bl.finishup(result.success)

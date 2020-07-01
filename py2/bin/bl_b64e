@@ -1,0 +1,4 @@
+#!python
+from sys import argv
+import base64
+print base64.encodestring(argv[1])

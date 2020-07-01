@@ -1,0 +1,36 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotscript", dest="depotScript",help="where to place the script in the depot.  If it doesn't start with '/', $myGroup will be prepended.  If this option is not specified, --script's 'basename' will be placed in $myGroup")
+
+(option,args) = parser.parse_args()
+
+if not option.depotScript: # if --depotscript not spcefied, use the 'basename' value of --script
+    depotScript = option.script.split("/")[-1]
+    depotGroup = blBase.getMyGroup()
+else:
+    (depotGroup,depotScript)= blBase.normalizeArg(option.depotScript,"--depotscript")
+bl=blBase()
+
+if not option.depotScript:
+    parser.print_help()
+    print 
+    print "--depotscript is mandatory"
+    sys.exit(1)
+    print "--value is mandatory"
+    sys.exit(1)
+
+print "listing parameters of ",depotGroup + "/" + depotScript
+print "NSHScript","clearNSHScriptParametersByGroupAndName",[depotGroup,depotScript]
+result = bl.runBlcli("NSHScript","clearNSHScriptParametersByGroupAndName",[depotGroup,depotScript])
+print result
+
+bl.finishup(result.success)
+

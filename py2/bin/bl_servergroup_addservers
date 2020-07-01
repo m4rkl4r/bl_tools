@@ -1,0 +1,69 @@
+#!python
+from blBase import blBase
+import sys
+import re
+import os
+from subprocess import check_output
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--servergroups", dest="serverGroup",help="Example: /SOME/BL/SERVER/GROUP")
+parser.add_option("--servers", dest="serverList",help="comma delimited list.  short name or long name - long name must be exact.")
+parser.add_option("--serverfile", dest="serverFile",help="newline delimited file.  short name or long name - long name must be exact.")
+parser.add_option("--force",dest="force",help="create group and add available servers even if some are not found")
+(option,args) = parser.parse_args()
+
+bl=blBase()
+success=True
+
+if option.serverList and option.serverFile:
+    parser.print_help()
+    print "only one of --serverlist and --serverfile can be used"
+    bl.finishup(success)
+
+serverlist=None
+if option.serverList:
+    serverlist=option.serverList.split(",")
+if option.serverFile:
+    f=open(option.serverFile,"r")
+    serverlist = f.readlines()
+    serverlist = map(lambda x: x.strip(),serverlist)
+    f.close()
+
+servermap=None
+if option.serverList or option.serverFile:
+    servermap=bl.validateServerList(serverlist)
+
+    if servermap["bad"]:
+        print "These servers were not found in bladelogic:"
+        for server in servermap["bad"]:
+            print "\t" + str(server)
+        if not option.force:
+            print "--force not specified. exiting."
+            bl.finishup(False)
+        else: 
+            print "--force was specified. continuing."
+
+# get group's ID
+(baseGroup,groupName)=blBase.normalizeArg(option.serverGroup,"--servergroup")
+serverGroup = baseGroup+"/"+groupName
+print "found server group",serverGroup
+result = bl.runBlcli("ServerGroup","groupNameToId",[serverGroup])
+if not result.success:
+    print "could not find created group",option.serverGroup
+    print "exiting."
+    success=False
+groupid=result.returnValue
+
+# if list of servers specified, add them to the group
+if servermap:
+    for server in servermap["good"]:
+        print "adding",server,"to",option.serverGroup,"with groupid",groupid
+        result = bl.runBlcli("StaticServerGroup","addServerToServerGroupByName",[groupid,server])
+        print result.success
+        if not result.success:
+            success=False
+
+bl.finishup(success)
