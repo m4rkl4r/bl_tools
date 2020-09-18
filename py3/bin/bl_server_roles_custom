@@ -1,0 +1,18 @@
+#!/unixworks/virtualenvs/py382/bin/python
+import blLib
+from blBase import blBase, blSAMs, blRoles
+from optparse import OptionParser
+import sys
+import re
+
+parser = OptionParser(usage="bl_server_roles_custom fqdn")
+blBase.setUnsupported(parser)
+
+(option,args) = parser.parse_args()
+
+if len(sys.argv)!=2:
+    parser.print_help()
+    sys.exit(1)
+
+fqdn=sys.argv[1]
+print([x for x in blRoles(fqdn) if re.search(b"CUSTOM",x)])

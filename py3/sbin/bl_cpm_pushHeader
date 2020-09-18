@@ -1,0 +1,20 @@
+#!/bin/bash
+
+. /unixworks/bl_tools/etc/bl_tools.sh
+. /unixworks/bl_tools/etc/promotion.sh
+
+bl_conf_auto "BL_ENG_PROFILE" "$BL_ENG_PROFILE"
+
+LOCAL_HEADER="$1"
+
+if ! echo $LOCAL_HEADER | egrep -q ^$BL_LOCAL_ENG/headers/
+then
+    echo "ERROR: file \"$DEPOT_HEADER\" must use fully qualified path and be located in \"$BL_LOCAL_ENG/headers/\""
+    exit 1
+fi
+
+HEADER="$(echo $LOCAL_HEADER | sed -e "s#$BL_LOCAL_ENG/##")"
+DEPOT_HEADER="$BL_ENG_BASE/$HEADER"
+LOCAL_DIR=$(dirname "$LOCAL_HEADER")
+echo RUNNING: bl_addDepotFile --srcfile "$LOCAL_HEADER" --dstfile "$DEPOT_HEADER"
+bl_addDepotFile --srcfile "$LOCAL_HEADER" --dstfile "$DEPOT_HEADER" --replace

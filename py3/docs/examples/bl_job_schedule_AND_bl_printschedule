@@ -1,0 +1,35 @@
+$ bl_job_schedule --job vasd.update.0.nsh --servers server1 --once --startdate "2020-08-10 17:00:00" --email blrecord@domain.com
+logging to  /tmp/bl_tools_log/USERID.DOMAIN.COM.664597.1596211045.671359
+==client acquired: <zeep.client.Client object at 0x7fc377b875b0>
+Logged in as: USER@DOMAIN.COM
+Session ID: urn:uuid:69811F9746D32256381596211837954
+Switching role to: DEPLOYERADV_MYGROUP
+====
+/WorkAreas/DEPLOYERADV_MYGROUP/util/vasd vasd.update.0.nsh : trying NSHScriptJob to find dbkey: DBKey:SJobModelKeyImpl:20141204-9-642993901
+
+creating vasd.update.0.nsh-start20200810_170000 in /WorkAreas/DEPLOYERADV_MYGROUP/USER/copies/scheduled : True
+
+clearing current serverlist, and adding specified servers to /WorkAreas/DEPLOYERADV_MYGROUP/USER/copies/scheduled/vasd.update.0.nsh-start20200810_170000
+Adding --servers=server1 to job: /WorkAreas/DEPLOYERADV_MYGROUP/USER/copies/scheduled vasd.update.0.nsh-start20200810_170000 : trying NSHScriptJob to find dbkey: DBKey:SJobModelKeyImpl:20179397-1-643932007
+True
+
+schedMethod: addOneTimeScheduleWithEMailNotification
+schedule_args: ['DBKey:SJobModelKeyImpl:20179397-1-643932007', '2020-08-10 17:00:00', 'blrecord@domain.com', 14]
+job: /WorkAreas/DEPLOYERADV_MYGROUP/USER/copies/scheduled/vasd.update.0.nsh-start20200810_170000
+servers: [server1]
+(py382) -sh-4.2$ (deployPCustom:/WorkAreas/DEPLOYERADV_MYGROUP/util/vasd vasd) bl_print
+bl_printlog       bl_printschedule
+(py382) -sh-4.2$ (deployPCustom:/WorkAreas/DEPLOYERADV_MYGROUP/util/vasd vasd) bl_print
+bl_printlog       bl_printschedule
+(py382) -sh-4.2$ (deployPCustom:/WorkAreas/DEPLOYERADV_MYGROUP/util/vasd vasd) bl_printschedule --job /WorkAreas/DEPLOYERADV_MYGROUP/USER/copies/scheduled/vasd.update.0.nsh-start20200810_170000
+logging to  /tmp/bl_tools_log/USER.DOMAIN.COM.664597.1596211076.0640645
+==client acquired: <zeep.client.Client object at 0x7fa05ffe05e0>
+Logged in as: USER@DOMAIN.COM
+Session ID: urn:uuid:69811F9746D32256381596211868317
+Switching role to: DEPLOYERADV_MYGROUP
+====
+/WorkAreas/DEPLOYERADV_MYGROUP/USER/copies/scheduled vasd.update.0.nsh-start20200810_170000 : trying NSHScriptJob to find dbkey: DBKey:SJobModelKeyImpl:20179397-2-643932007
+==== schedules for job  /WorkAreas/DEPLOYERADV_MYGROUP/USER/copies/scheduled/vasd.update.0.nsh-start20200810_170000 ====
+Schedule DB Key: DBKey:SScheduleKeyImpl:44409092
+Frequency Type: Once
+Schedule: On 2020/08/

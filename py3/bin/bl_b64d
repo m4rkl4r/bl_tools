@@ -1,0 +1,8 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from sys import argv
+import base64
+# 2-3
+#print(base64.decodestring(argv[1]))
+pw = argv[1]
+pw = base64.b64decode(pw)
+print(pw.decode())

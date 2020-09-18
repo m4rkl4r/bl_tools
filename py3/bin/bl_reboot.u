@@ -1,0 +1,42 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import time
+from optparse import OptionParser
+
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--Host", dest="Host")
+
+(option,args) = parser.parse_args()
+
+bl=blBase()
+success=True
+
+if not option.Host:
+    parser.print_help()
+    print()
+    print("--Host is required")
+    sys.exit(1)
+
+print("Are you sure you want to reboot",Host,"?")
+print(" Say 'Yes I am quite sure' - or 'n' to exit.")
+response=""
+while (response != "n") and (response != "Yes I am quite sure"):
+    response = input("prompt> ")
+if response == "n":
+    print("exiting...")
+    sys.exit(0)
+
+print("rebooting", Host)
+print("sleeping 10 seconds before firing off job")
+time.sleep(10)
+print("Going ahead")
+result = bl.runBlcli("Server","reboot",[option.Host])
+print(result)
+
+print("\nplease note, server is likely rebooting even if success==False")
+
+bl.finishup(result.success)

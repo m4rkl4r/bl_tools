@@ -1,0 +1,10 @@
+#!/bin/bash
+
+ID=`id -u`
+
+if ! test "$ID" = 0;
+then
+	echo $0 must be run as root
+fi
+find /unixworks/bl_tools/eng/headers -type f -exec chmod uga+r "{}" \;
+find /unixworks/bl_tools/eng/headers -type f -exec ls -ld "{}" \;

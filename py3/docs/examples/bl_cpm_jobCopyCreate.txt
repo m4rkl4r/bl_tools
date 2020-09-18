@@ -1,0 +1,81 @@
+CREATE JOB COPY
+
+vastool.0.nsh takes parameters to determine behavior.
+If no special arguments are given, it does vastool status.
+
+Here is a job directory in /unixworks/bl_tools/eng/util/vasd
+Notice vastool.info.acl.0.nsh is a link to vastool.0.nsh
+It's a job copy with a paremeter modified to run vastool info acl
+
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) ls -l
+total 24
+drwx------ 2 userid unixuser  124 Jul 29 15:27 adhoc
+-rw------- 1 userid unixuser 3139 Aug  6 17:47 chkVas.0.nsh
+drwx------ 2 userid unixuser 4096 Jul 29 11:18 hostlist
+drwxrwxrwx 4 root    root       35 Aug  6 16:56 log
+drwx------ 2 userid unixuser   89 Jul 29 11:02 parallelize
+drwx------ 2 userid unixuser 4096 Aug  6 17:18 params
+drwx------ 2 userid unixuser   89 Jul 29 11:02 scripttype
+-rw------- 1 userid unixuser 2064 May 15 12:06 vasdFlushMemoryLeak.0.nsh.notready
+-rw------- 1 userid unixuser 3543 Jul 24 15:58 vasd.update-capaths.0.nsh
+-rw------- 1 userid unixuser 2038 Jul 29 10:38 vastool.0.nsh
+lrwxrwxrwx 1 userid unixuser   13 Jul 29 11:18 vastool.info.acl.0.nsh -> vastool.0.nsh
+
+Now we will create job copies to run vastool -u host/ info id
+
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) bl_cpm_jobCopyTemplate.sh vastool.0.nsh vastool.host.info.id.0.nsh
+(output elided)
+
+Now, params files are created for each lane, and there's a symbolic link to represent the job
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) ls -ls vastool.host.info.id.0.nsh params/params.vastool.host.info.id.ENG
+4 -rw------- 1 userid unixuser 405 Aug  7 09:50 params/params.vastool.host.info.id.ENG
+0 lrwxrwxrwx 1 userid unixuser  13 Aug  7 09:50 vastool.host.info.id.0.nsh -> vastool.0.nsh
+
+Then we copy the params file for the vastool jobs to the vastool -u host/ info id jobs, and edit slightly
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) cp params/params.vastool.ENG params/params.vastool.host.info.id.ENG
+
+Then we create an ENG job to test it out
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) bl_cpm_jobCopyCreateENG.sh vastool.0.nsh vastool.host.info.id.0.nsh
+
+Then we run the job to check for success.
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) bl_jobrun --job vastool.host.info.id.0.nsh --servers $HOSTNAME --printlog
+...
+...
+Type: Info Date: Fri Aug 07 10:58:09 EDT 2020 Message: ========= host1: STARTING WORK =========
+Type: Info Date: Fri Aug 07 10:58:09 EDT 2020 Message: ==== START host1: vastool  -u host info id  ====
+Type: Info Date: Fri Aug 07 10:58:09 EDT 2020 Message: host1: Kerberos:    HOST1$@DOMAIN.COM
+Type: Info Date: Fri Aug 07 10:58:09 EDT 2020 Message: host1: LDAP:        CN=host1,OU=Tree,OU=Domain,OU=com
+Type: Info Date: Fri Aug 07 10:58:09 EDT 2020 Message: ==== END host1: vastool  -u host info id  ====
+Type: Info Date: Fri Aug 07 10:58:09 EDT 2020 Message: ========= host1: ENDING WORK =========
+...
+Type: Info Date: Fri Aug 07 10:58:09 EDT 2020 Message: host1: exiting CODE=0
+
+IF we are happy with this, then create the other job copies
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) bl_cpm_jobCopyCreateQA.sh vastool.0.nsh vastool.host.info.id.0.nsh
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) bl_cpm_jobCopyCreateLLE.sh vastool.0.nsh vastool.host.info.id.0.nsh
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) bl_cpm_jobCopyCreatePROD.sh vastool.0.nsh vastool.host.info.id.0.nsh
+
+Now, we can change to a prod profile and test the prod job
+(py382) -sh-4.2$ (svce:/WorkAreas/ENG_ROLE/util/vasd vasd) bl_conf svcp
+BL_CONF SET is now set TO svcp, myGroup set TO /WorkAreas/PROD_ROLE/util/vasd
+(py382) -sh-4.2$ (svcp:/WorkAreas/PROD_ROLE/util/vasd vasd) bl_cpm_chgrp ## not necessary in this case
+BL_CONF SET is now set TO svcp, myGroup set TO /WorkAreas/PROD_ROLE/util/vasd
+(py382) -sh-4.2$ (svcp:/WorkAreas/PROD_ROLE/util/vasd vasd) bl_jobrun --job vastool.host.info.id.0.nsh --servers fqdn1,fqdn2 --printlog
+...
+...
+Type: Info Date: Fri Aug 07 11:10:21 EDT 2020 Message: ========= host2: STARTING WORK =========
+Type: Info Date: Fri Aug 07 11:10:21 EDT 2020 Message: ==== START host2: vastool  -u host info id  ====
+Type: Info Date: Fri Aug 07 11:10:22 EDT 2020 Message: host2: Kerberos:    LRCHA3YXPDBPA$@DOMAIN.COM
+Type: Info Date: Fri Aug 07 11:10:22 EDT 2020 Message: host2: LDAP:        CN=host2,OU=Tree,OU=domain,OU=com
+Type: Info Date: Fri Aug 07 11:10:22 EDT 2020 Message: ==== END host2: vastool  -u host info id  ====
+Type: Info Date: Fri Aug 07 11:10:22 EDT 2020 Message: ========= host2: ENDING WORK =========
+...
+Type: Info Date: Fri Aug 07 11:10:23 EDT 2020 Message: ========= host1: STARTING WORK =========
+Type: Info Date: Fri Aug 07 11:10:23 EDT 2020 Message: ==== START host1: vastool  -u host info id  ====
+Type: Info Date: Fri Aug 07 11:10:24 EDT 2020 Message: host1: Kerberos:    HOST1$@DOMAIN.COM
+Type: Info Date: Fri Aug 07 11:10:24 EDT 2020 Message: host1: LDAP:        CN=host1,OU=Tree,OU=domain,OU=Com
+Type: Info Date: Fri Aug 07 11:10:24 EDT 2020 Message: ==== END host1: vastool  -u host info id  ====
+Type: Info Date: Fri Aug 07 11:10:24 EDT 2020 Message: ========= host1: ENDING WORK =========
+...
+
+

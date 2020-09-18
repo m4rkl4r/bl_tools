@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+. /unixworks/bl_tools/etc/bl_tools.sh
+
+if test -z "$BL_PROD_PROFILE"; then
+    echo Please define BL_PROD_PROFILE in \~/.bl_tools/blvars.sh
+    exit 1
+fi
+bl_conf "$BL_PROD_PROFILE" > /dev/null
+bl_lsdir.u --servergroup="/Servers by Role/$BL_PROD_ROLE" | egrep "^\s" | sed -e 's/"\|\s//g' | egrep -v "^$" | grep -v IDgroupdescription

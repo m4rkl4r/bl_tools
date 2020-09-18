@@ -1,0 +1,23 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+print("This command is disabled. deleteGroupByQualifiedName is unpublished."
+sys.exit(1)
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--servergroup", dest="serverGroup",help="Example: /WorkAreas/BL_GROUP/USERID/1234567")
+(option,args) = parser.parse_args()
+
+bl=blBase()
+
+result = bl.runBlcli("StaticServerGroup","deleteGroupByQualifiedName",[option.serverGroup])
+
+print(result)
+
+bl.finishup(result.success)

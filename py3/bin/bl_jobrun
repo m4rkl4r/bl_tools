@@ -1,0 +1,309 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+from sys import argv
+import pytz
+import math
+import re
+import os
+import time
+import datetime
+from optparse import OptionParser
+
+# created 2017 by mark price
+# 2019-08-20 "add error checking for when server status is not returned correctly"
+
+parser = OptionParser(usage="bl_jobrun [options] - executes once against each group of job targets in --defaults (--servers and --serverfile), and --servergroups")
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",help="$myGroup is prepended if not starting with a '/'")
+parser.add_option("--defaultservers",dest="defaults",action="store_true",help="Mutually exclusive with --server* options.  Run against the default targets defined on the job.  Enabled by default if no servers are specified by other options.")
+parser.add_option("--servers",dest="servers",help="comma separated list.  run against these servers rather than the currently assigned ones.")
+parser.add_option("--serverfile",dest="serverFile",help="newline delimited file.  run against these servers rather than the currently assigned ones.")
+parser.add_option("--servergroups",dest="serverGroups",help="comma delimited list.  run against these server groups rather than the currently assigned ones.")
+parser.add_option("--servergroupfile",dest="serverGroupFile",help="newline delimited list of server groups.  run against these server group rather than the currently assigned ones.")
+parser.add_option("--printlog",action="store_true",help="print the bl logs for the jobs")
+parser.add_option("--printstatus",action="store_true",help="UNSUPPORTED - print the job exit status per server - UNSUPPORTED")
+parser.add_option("--reportwait",dest="reportWait",type="int",help="How many seconds between loops waiting for jobs to finish.  Defaults: increase gradually from 10 seconds to 10 minutes.")
+parser.add_option("--debug",action="store_true",default=False)
+
+
+(option,args) = parser.parse_args()
+
+(jobGroup,jobName)=blBase.normalizeArg(option.job,"--job")
+
+if option.defaults or not (option.serverGroups or option.serverGroupFile or option.servers or option.serverFile):
+    option.defaults=True
+else:
+    option.defaults=False
+if option.defaults and (option.serverGroups or option.serverGroupFile or option.servers or option.serverFile):
+    parser.print_help()
+    print()
+    print("--defaultservers cannot be used with --servers, --serverfile, --servergroups, or --servergroupfile")
+    sys.exit(1)
+    
+
+#def remove_quote_but_remember(arg):
+#    ## remove but remember quotes$
+#    quote_char = ""
+#    if len(arg)>1 and re.match("^'",arg) and re.search("'$",arg):
+#        quote_char = "'"
+#        arg = arg[1:-1]
+#    elif len(arg)>1 and re.match("^\"",arg) and re.search("\"$",arg):
+#        quote_char = "\""
+#        arg = arg[1:-1]
+#    return [arg,quote_char]
+
+serverGroupsSet = set()
+serverGroups = ""
+if option.serverGroups:
+    for g in option.serverGroups.split(","):
+        serverGroupsSet.add(g)
+if option.serverGroupFile:
+    filegroups = open(option.serverGroupFile,mode="rt").readlines()
+    filegroups = [x.strip() for x in filegroups]
+    serverGroupsSet.update(filegroups)
+for group in serverGroupsSet:
+    #[group,quote_char] = remove_quote_but_remember(group)
+    #print "got back",group,"and",quote_char
+    ###(parentGroup,groupName)=blBase.normalizeArg(group,"--servergroups="+group)
+    #if re.match(".*\"$",groupName): print "found quote"
+    ###fullGroupName = parentGroup + "/" + groupName
+    fullGroupName=group
+    #fullGroupName = re.sub(",","\,",fullGroupName)
+    if serverGroups:
+        serverGroups = serverGroups + ","
+    #serverGroups = serverGroups + quote_char + fullGroupName + quote_char
+    serverGroups = serverGroups + fullGroupName
+print("serverGroups:",serverGroups)
+
+tz=pytz.timezone("US/Eastern")
+now = datetime.datetime.now(tz)
+print("starting up"," ".join(argv),"at", now, "US/Eastern")
+print("attempting to run", jobGroup + "/" + jobName)
+
+bl=blBase(debug=option.debug)
+
+success=True
+
+if not option.job:
+    parser.print_help()
+    print()
+    print("--job is required")
+    sys.exit(1)
+
+jobResultCode = { 0:"SUCCESS",1:"WARNING",2:"ERROR",3:"NOT_RUN" }
+
+print("finding job key:")
+result = bl.jobDBKey(jobGroup,jobName)
+if not result.success:
+    print(result)
+    bl.finishup(result.success)
+else: jobdbkey = result.returnValue
+print("jobdbkey:",jobdbkey)
+
+def print_job_results(jobdbkey,runkey,runid,serverkeys,one_word_description):
+    done = bl.runBlcli("JobRun","getEndTimeByRunKey",[runkey]).success
+    if done:
+        print("Done processing",one_word_description,"with runkey",runkey)
+        if option.printlog:
+            print("================","getLogItemsByJobRunId:",str(one_word_description))
+            time.sleep(10) 
+            result = bl.runBlcli("JobRun","getLogItemsByJobRunId",[jobdbkey,runid])
+            print("Job Results:")
+            print(result.returnValue)
+        if option.printstatus:
+            print("================","getServersStatusByJobRun:",str(one_word_description))
+            result = bl.runBlcli("JobRun","getServersStatusByJobRun",[runid])
+            #print(result)
+            if result.success:
+                serverstatus = result.returnValue[1:-1].split(", ")
+                for element in serverstatus:
+                    try:
+                        (dbkey,status)=element.split("=")
+                        status=int(status)
+                        if dbkey in serverkeys:
+                            print(serverkeys[dbkey],status,"=",jobResultCode[status])
+                        else:
+                            print("ERROR:",dbkey,": status =",status,"- couldn't look up hostname based on this dbkey")
+                    except Exception as e:
+                        print("ERROR: exception while processing \"" + str(element) + "\"")
+                        print("EXCEPTION:",e)
+
+
+## this returns an a generator of False, returning a final True if the job is completed
+## naturalish growth rate of wait time until evening out to 600
+def jobCompletioner(runkey,description):
+    if option.reportWait:
+        sleeptime=option.reportWait
+    else:
+        sleeptime=10
+
+    trycounter = 5
+
+    print("=================== waiting for job to complete")
+    ## first try
+    try:
+        result = bl.runBlcli("JobRun","getEndTimeByRunKey",[runkey])
+        SUCCESS = result.success
+    except Exception as e:
+        print(e)
+        print("trying again")
+        trycounter = trycounter - 1
+        SUCCESS = False
+
+    while not SUCCESS:
+        print("sleeping",sleeptime,"seconds for runkey",runkey,":",description)
+        time.sleep(sleeptime)
+        if not option.reportWait:
+            if sleeptime <= 600:
+                sleeptime=sleeptime+int(math.sqrt(sleeptime))
+            else: sleeptime=600
+        try:
+            result = bl.runBlcli("JobRun","getEndTimeByRunKey",[runkey])
+            SUCCESS = result.success
+        except Exception as e:
+            print(e)
+            trycounter = trycounter - 1
+            if not trycounter:
+                print()
+                print("=================")
+                print("failing to get job end time.")
+                print("try bl_job_endTime --runkey",runkey,"to check job completion.")
+                print("Try bl_printlog --job", jobGroup + "/" + jobName + " --jobrunkey",runkey,"to get logs up to the current time")
+                sys.exit(1)
+            else:
+                print("Trying again")
+            SUCCESS = False
+        yield False
+    print("job completed at", result.returnValue)
+    yield True
+
+### START: prepare and execute job against servers already assigned to the job
+default_runid=None
+default_runkey=None
+default_dbkeys=dict()
+default_completioner=None
+if option.defaults:
+    targetservers = bl.jobTargets(jobGroup,jobName)
+    if option.printstatus:
+        for server in targetservers:
+            serverkey="".join(bl.runBlcli("Server","getServerDBKeyByName",[server]).returnValue.split("-")[0].split("Model"))
+            print("storing",server,":",serverkey,"in default_dbkeys")
+            default_dbkeys[serverkey]=server
+            print()
+
+    result=None
+    jobresult=None
+
+    print("=================")
+    print("default targets:", targetservers)
+    print("=================")
+    print("Kicking off against default assigned servers:",jobGroup + "/" + jobName,"with jobdbkey",jobdbkey)
+    jobresult = bl.runBlcli("Job","executeJobAndWaitForRunID",[jobdbkey])
+
+    if not jobresult.success:
+        print("job execute failed:", jobresult)
+        bl.finishup(jobresult.success)
+    else: default_runkey = jobresult.returnValue
+
+    result = bl.runBlcli("JobRun","jobRunKeyToJobRunId",[default_runkey])
+    if result.success:
+        default_runid = result.returnValue
+        default_completioner = jobCompletioner(default_runkey,"for --servergroups")
+    else:
+        print("job runkey lookup failed:",result)
+        bl.finishup(result.success)
+
+    print("=================")
+    print("Executing against default assigned servers:",jobGroup + "/" + jobName,"with jobdbkey",jobdbkey,"runkey",default_runkey,"runid",default_runid)
+### END: prepare and execute job against servers already assigned to the job
+
+### START: prepare and execute job against all non-default targets
+global_dbkeys=dict()
+global_servers=set()
+global_runkey=None
+global_completioner=None
+if option.servers or option.serverFile or serverGroups:
+    ## START: get server fqdns
+    server_names = set()
+    if option.servers or option.serverFile:
+        if option.servers:
+            server_names.update(option.servers.lower().split(","))
+        if option.serverFile:
+            serverFileServers = open(option.serverFile,mode="rt").readlines()
+            serverFileServers = [x.strip() for x in serverFileServers]
+            serverFileServers = [x.lower() for x in serverFileServers]
+            server_names.update(serverFileServers)
+    if serverGroups:
+       print("getting servers from --servergroups and --servergroupfile:",end=' ')
+       for group in serverGroupsSet:
+           result=bl.serverGroupMembers(group)
+           if result.success:
+               s = result.returnValue.strip().split("\n")
+               server_names.update(s)
+           else:
+               print("couldn't get server list for group",group)
+               print(result)
+    servermap=bl.validateServerList(server_names,option.printstatus)
+    global_servers.update(servermap["good"])
+
+    print("=============== servermap[bad]:")
+    print(servermap["bad"])
+
+    ## END: get server fqdns
+    ## START: get server dbkeys if needed
+    if option.printstatus:
+        for server in global_servers:
+            if servermap and server in servermap["good"]:
+                serverkey = servermap["dbkeys"][server]
+                print("storing",server,":",serverkey,"in global_dbkeys")
+                global_dbkeys[serverkey] = server
+            else: ## probably means the server came from a servergroup, or if doubleboocked, we don't need to look it up twice.
+                result = bl.runBlcli("Server","getServerDBKeyByName",[server])
+                if result.success:
+                    serverkey="".join(result.returnValue.split("-")[0].split("Model"))
+                    print("storing",server,":",serverkey,"in global_dbkeys")
+                    global_dbkeys[serverkey]=server
+                else:
+                    print("ERROR: couldnt find server key for ",server)
+                    print(result)
+    ## END: get server dbkeys if needed
+    ## START: execute job
+    global_targets=",".join(sorted(global_servers))
+
+    print ("===============")
+    print("Kicking off execution against servers:")
+    print()
+    print(global_targets.split(","))
+
+    result = bl.runBlcli("Job","executeAgainstServersForRunID",[jobdbkey,global_targets])
+    global_runkey=result.returnValue
+
+    print()
+    print(result.success,"with job run key",global_runkey)
+
+    if not result.success:
+        print("job execution failed")
+        bl.finishup(result.success)
+    else:
+        global_completioner = jobCompletioner(global_runkey,"for all non-default server targets")
+        global_runid=bl.runBlcli("JobRun","jobRunKeyToJobRunId",[global_runkey]).returnValue
+
+    print("===============")
+    print("Executing",jobGroup + "/" + jobName,"with jobdbkey",jobdbkey,"runkey",global_runkey,"runid",global_runid)
+    ## END: execute job
+### END: prepare and execute job against all non-default targets
+
+## wait for job runs to complete, and then print results
+all_done=False
+while not all_done:
+    if default_completioner and next(default_completioner):
+        print()
+        print_job_results(jobdbkey,default_runkey,default_runid,default_dbkeys,"--defaultservers")
+        default_completioner=None
+    if global_completioner and next(global_completioner):
+        print()
+        print_job_results(jobdbkey,global_runkey,global_runid,global_dbkeys,"all non-default servers")
+        global_completioner=None
+    if not default_completioner and not global_completioner:
+        all_done=True

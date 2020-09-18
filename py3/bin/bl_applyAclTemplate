@@ -1,0 +1,96 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser, OptionGroup
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotobject", dest="depotObj",help="The object (group or file) to modify  If not starting with '/', $myGroup will be prepended")
+parser.add_option("--jobobject", dest="job",help="The job or job group to modify  If not starting with '/', $myGroup will be prepended")
+parser.add_option("--acl", dest="acl",help="the ACL to apply")
+parser.add_option("--replace", dest="replace", action="store_true",default=False,help="replace rather than append - This is a null operation for groups")
+note = OptionGroup(parser,"NOTE - uses applyAclPolicy on groups, applyAclTemplate on objects since our applyAclTemplate is just applying the policy")
+parser.add_option_group(note)
+
+(option,args) = parser.parse_args()
+
+if not option.depotObj is None:
+        (depotGroup,depotObj)=blBase.normalizeArg(option.depotObj,"--depotObj")
+        if depotObj: fullpath = depotGroup + "/" + depotObj
+        else: fullpath = depotGroup
+else: depotObj = depotGroup = None
+if not option.job is None:
+        (jobGroup,job)=blBase.normalizeArg(option.job,"--job")
+        if job: fullpath = jobGroup + "/" + job
+        else: fullpath = jobGroup
+else: job = jobGroup = None
+
+if not ((job or depotObj) and option.acl):
+    parser.print_help()
+    print("one of --depotObj or --job, required, and also --acl")
+    sys.exit(1)
+
+if job and depotObj:
+    parser.print_help()
+    print("exactly one of --job and --depotobject must be chosen")
+    sys.exit(1)
+
+if option.replace:
+    replace="true"
+else:
+    replace="false"
+bl=blBase()
+
+## here maybe DepotFile addFileToDepot(groupname,filelocation,name,description) -- all fields are normal strings
+isGroup=False
+if (depotGroup):
+    print("finding", depotGroup + "-/-" + depotObj, "in depot")
+    result = bl.depotObjectDBKey(depotGroup,depotObj)
+    if not result:
+        print("not a depot object.  trying group lookup.")
+        result = bl.depotGroupDBKey(fullpath)
+        isGroup=True
+    #print result
+    if result is None:
+        print("couldn't find", depotGroup + "/" + depotObj, "in depot.", end=' ')
+        bl.finishup(False)    
+if (jobGroup):
+    print("finding", jobGroup + "/" + job, "in jobs")
+    print("jobGroupDBKey:")
+    result = bl.jobGroupDBKey(fullpath)
+    if not result or result.success == False:
+        print("jobDBKey:")
+        result = bl.jobDBKey(jobGroup,job)
+    else: isGroup = True
+    #print result
+    if result is None or result.success == False:
+        print("couldn't find", jobGroup + "/" + job, "in jobs.", end=' ')
+        bl.finishup(False)    
+
+objectdbkey=None
+if result.success:
+    objectdbkey=result.returnValue
+else:
+    print("couldn't find",option.depotObj,"in",option.depotGroup) 
+    sys.exit(1)
+
+if depotObj:
+    if isGroup: namespace = "DepotGroup"
+    else: namespace = "DepotObject"
+if job:
+    if isGroup: namespace = "JobGroup"
+    else: namespace = "Job"
+
+if isGroup:
+    print("applying policy",str(option.acl),"to",namespace,fullpath)
+    result = bl.runBlcli(namespace,"applyAclPolicy",[fullpath,option.acl])
+    print(result)
+else:
+    print("applying template",str(option.acl),"to",namespace,fullpath)
+    result = bl.runBlcli(namespace,"applyAclTemplate",[objectdbkey,option.acl,replace])
+    print(result)
+
+bl.finishup(result.success)

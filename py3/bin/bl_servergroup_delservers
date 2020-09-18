@@ -1,0 +1,69 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import os
+from subprocess import check_output
+
+from optparse import OptionParser, OptionGroup
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--servergroup", dest="serverGroup",help="comma separated list.  Example: /WorkAreas/BL_GROUP/USERID/1234567\nNOTE: if a server was ADDED as part of a servergroup, you must delete the whole servergropu")
+parser.add_option("--serverlist", dest="serverList",help="comma delimited list.  short name or long name - long name must be exact.")
+parser.add_option("--serverfile", dest="serverFile",help="newline delimited file.  short name or long name - long name must be exact.  Results will print to filename.result")  
+parser.add_option("--force",dest="force",help="create group and add available servers even if some are not found")
+note = OptionGroup(parser,"NOTE - If server S is added to server group A by adding group B, S cannot be deleted individually","You must remove B from A, even though this script will return 0 if you try to remove S.")
+parser.add_option_group(note)
+
+(option,args) = parser.parse_args()
+
+
+if option.serverList and option.serverFile:
+    parser.print_help()
+    print("only one of --serverlist and --serverfile can be used")
+    sys.exit(1)
+
+bl=blBase()
+success=True
+
+serverlist=None
+if option.serverList:
+    serverlist=option.serverList.split(",")
+if option.serverFile:
+    f=open(option.serverFile,mode="rt")
+    serverlist = f.readlines()
+    serverlist = [x.strip() for x in serverlist]
+    f.close()
+
+servermap=None
+if option.serverList or option.serverFile:
+    servermap=bl.validateServerList(serverlist)
+
+    if servermap["bad"]:
+        print("These servers were not found in bladelogic:")
+        for server in servermap["bad"]:
+            print("\t" + str(server))
+        if not option.force:
+            print("--force not specified. exiting.")
+            sys.exit(1)
+        else: 
+            print("--force was specified. continuing.")
+
+# get group's ID
+result = bl.runBlcli("ServerGroup","groupNameToId",[option.serverGroup])
+if not result.success:
+    print("could not find group",option.serverGroup)
+    print("exiting.")
+    bl.finishup(result.success)
+groupid=result.returnValue
+
+# delete servers
+if servermap:
+    for server in servermap["good"]:
+        print("deleting",server,"from",option.serverGroup, end=' ')
+        result = bl.runBlcli("StaticServerGroup","removeServerFromServerGroupByName",[option.serverGroup,server])
+        print(result.success)
+        if not result.success: success=False
+
+bl.finishup(success)

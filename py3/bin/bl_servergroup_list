@@ -1,0 +1,39 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import os
+from subprocess import check_output
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--servergroup", dest="serverGroup",help="Example: /WorkAreas/BL_GROUP/USERID/1234567. Prepends $myGroup if not fully qualified.")
+parser.add_option("--force",dest="force",action="store_true",help="create group and add available servers even if some are not found")
+parser.add_option("--verbose",dest="verbose",action="store_true",help="create group and add available servers even if some are not found")
+(option,args) = parser.parse_args()
+
+
+if not option.serverGroup:
+    parser.print_help()
+    print("--servergroup is required")
+    sys.exit(1)
+
+bl=blBase()
+
+parentGroup,groupName=blBase.normalizeArg(option.serverGroup,"--servergroup")
+serverGroup=parentGroup + "/" + groupName
+serverGroupID = bl.getGroupID("Server",serverGroup).returnValue
+#print bl.runBlcli("Server","findServerObjectsByGroup",[serverGroupID,"true"])
+#print serverGroupID
+result = bl.serverGroupMembers(serverGroup)
+if result.success:
+    if result.returnValue == "void":
+        print("servergroup is empty")
+    else:
+        print(result.returnValue, end=' ')
+        bl.finishup(result.success)
+else:
+    print(result.error)
+    bl.finishup(result.success)

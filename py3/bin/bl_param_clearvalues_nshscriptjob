@@ -1,0 +1,30 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",help="where to place the script in the depot.  If it doesn't start with '/', $myGroup will be prepended.  If this option is not specified, --script's 'basename' will be placed in $myGroup")
+
+(option,args) = parser.parse_args()
+
+
+if not option.job:
+    parser.print_help()
+    print() 
+    print("--job is mandatory")
+    sys.exit(1)
+
+(jobGroup,job)= blBase.normalizeArg(option.job,"--job")
+bl=blBase()
+
+print("NSHScriptJob","clearNSHScriptJobParameterValuesByGroupAndName",[jobGroup,job])
+result = bl.runBlcli("NSHScriptJob","clearNSHScriptParameterValuesByGroupAndName",[jobGroup,job])
+print(result)
+
+bl.finishup(result.success)
+

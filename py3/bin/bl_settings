@@ -1,0 +1,12 @@
+#!/unixworks/virtualenvs/py382/bin/python
+
+from blBase import settingsFile
+import json
+from sys import argv
+
+file = open(settingsFile,"rt")
+settings = json.load(file)
+
+setting = argv[1]
+
+print(settings[setting])

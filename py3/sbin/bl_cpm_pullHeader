@@ -1,0 +1,20 @@
+#!/bin/bash
+
+. /unixworks/bl_tools/etc/bl_tools.sh
+. /unixworks/bl_tools/etc/promotion.sh
+
+bl_conf_auto "BL_ENG_PROFILE" "$BL_ENG_PROFILE"
+
+DEPOT_HEADER="$1"
+
+if ! echo $DEPOT_HEADER | egrep -q ^$BL_ENG_BASE/
+then
+    echo "ERROR: file \"$DEPOT_HEADER\" must be in \"$BL_ENG_BASE\""
+    exit 1
+fi
+
+HEADER="$(echo $DEPOT_HEADER | sed -e "s#$BL_ENG_BASE/##")"
+LOCAL_HEADER="$BL_LOCAL_ENG/$HEADER"
+LOCAL_DIR=$(dirname "$LOCAL_HEADER")
+echo RUNNING: bl_getDepotFile --depotfile "$DEPOT_HEADER" --dstdir "$LOCAL_DIR"
+bl_getDepotFile --depotfile "$DEPOT_HEADER" --dstdir "$LOCAL_DIR"

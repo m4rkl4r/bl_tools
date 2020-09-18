@@ -1,0 +1,120 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+from blBase import settingsFile
+import json
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser(usage="bl_printschedule [options]")
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",action="store",help="//WorkAreas/path/to/your/job - if not fully qualified then relative to env varable $myGroup")
+parser.add_option("--user", dest="user",action="store",help="USERID or USERID@AD.DOMAIN.COM - will be forced to upper case")
+parser.add_option("--role", dest="role",action="store",help="filter by bladelogic role name")
+#parser.add_option("--outputfile", dest="outputfile",action="store",help="output goes to a log file")
+
+(option,args) = parser.parse_args()
+
+if (option.job and option.user or option.job and option.role or option.user and option.role) or not (option.job or option.user or option.role):
+    parser.print_help()
+    print()
+    print("Exactly one of --job, --user, or --role should be chosen.")
+    sys.exit(1)
+
+bl = blBase()
+
+def insertJobGroup(schedule):
+    """    insertJobGroup(schedule) -> schedule with job group added.
+    We will assume:
+         there may be no job listed
+         there may be no job name listed
+         we cant find the job group
+    If so, no change
+"""
+
+    scheduledJobGroup = None
+    jobkey = None
+
+    try:
+        if bl.debug: print(blBase.fname(),"==========",schedule)
+        # putting this in a try - what if somehow a result comes with no job key?
+        jobkeylist = [jk for jk in schedule.split("\n") if re.match("Job Key:",jk)]
+        if jobkeylist:
+            jobkey = jobkeylist[0].split(": ")[1]
+        if jobkey:
+                result = bl.getFQJobGroupByJobDBKey(jobkey)
+                if result.success:
+                    scheduledJobGroup = result.returnValue
+                else:
+                    print((blBase.fname(),result))
+    except Exception as e:
+        print((blBase.f_loc(),"couldnt look up job group",e))
+
+    if scheduledJobGroup is not None:
+        schedule=schedule.split("\n")
+        index = -1 
+        for i in range(len(schedule)):
+            if re.search("Job Name:", schedule[i]):
+                index = i
+                break
+        if index >= 0:
+                jobname = schedule[index].split("Job Name: ")[-1]
+                schedule[index] = "Job Name: " + scheduledJobGroup + "/" + jobname
+        schedule = "\n".join(schedule)
+    return schedule
+
+def printSchedules(schedules):
+    schedules = schedules.split("\n\n")
+    if bl.debug: print(blBase.fname(), schedules)
+    for s in schedules:
+        print(insertJobGroup(s))
+        print()
+    
+if option.job:
+    (jobGroup,jobName)= blBase.normalizeArg(option.job,"--job")
+
+    result = bl.jobDBKey(jobGroup,jobName)
+    jobKey=None
+    if result.success:
+        jobKey = result.returnValue
+        print("==== schedules for job ", jobGroup + "/" + jobName,"====")
+        result = bl.runBlcli("Schedule","findScheduleDetailsByJobKey",[jobKey])
+        if result.success:
+            printSchedules(result.returnValue)
+        else: print(result.error)
+    else:
+        print("ERROR: no job key found for",jobGroup + "/" +jobName)
+        print(result)
+    bl.finishup(result.success)
+
+if option.user:
+    settingsFH = open(settingsFile,"rt")
+    settings = json.load(settingsFH)
+    defaultAdDomain = settings["defaultAdDomain"]
+    user = option.user.upper()
+    if not re.search("@",user):
+        user=user+"@" + defaultAdDomain
+    result = bl.runBlcli("Schedule","findScheduleDetailsByExecutingUser",[user])
+    if result.success:
+        schedules = result.returnValue
+        print("==== schedules for user ", user, "====")
+        # if no schedules are found, print the result and leave
+        if not [x for x in schedules.split("\n") if re.search("Job Name:", x)]:
+            print(schedules)
+            bl.finishup(result.success)
+        printSchedules(schedules)
+    else:
+        print(result)
+    bl.finishup(result.success)
+
+if option.role:
+    print("==== schedules for role",option.role,"====")
+    result = bl.runBlcli("Schedule","findScheduleDetailsByExecutingRole",[option.role])
+    if result.success:
+        schedules = result.returnValue
+        printSchedules(schedules)
+    else:
+        print(result)
+    bl.finishup(result.success)

@@ -1,0 +1,29 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--runkey", dest="runkey",action="store",help="job runkey")
+
+(option,args) = parser.parse_args()
+
+if not option.runkey:
+    parser.print_help()
+    print()
+    sys.exit(1)
+
+bl = blBase()
+
+#bl.runBlcli("Server","getServerDBKeyByName",[server]).returnValue.split("-")[0].split("Model"))$
+result = bl.runBlcli("JobRun","getEndTimeByRunKey",[option.runkey])
+if result.success:
+    print("End Time: ", result.returnValue)
+else:
+    print(result.error)
+
+bl.finishup(result.success)

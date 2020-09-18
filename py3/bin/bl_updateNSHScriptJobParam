@@ -1,0 +1,41 @@
+#!/unixworks/virtualenvs/py382/bin/python
+
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--job", dest="job",type="string",help="If the job name is not fully qualified it will be appended to $myGroup")
+parser.add_option("--paramindex", dest="paramIndex",type="int",default=None,help="index from zero - so the fourth parameter will have --paramindex 3")
+parser.add_option("--paramvalue", dest="paramValue",default=None,help="new value for the parameter")
+
+(option,args) = parser.parse_args()
+
+print("job:",option.job,"index:",option.paramIndex,"value:",option.paramValue)
+
+if not (option.job and option.paramIndex is not None and option.paramValue is not None):
+    parser.print_help()
+    print()
+    print("--job, --paramindex, and --paramvalue are required")
+    sys.exit(1)
+
+(jobGroup,jobName)= blBase.normalizeArg(option.job,"--job")
+bl=blBase()
+
+result = bl.jobDBKey(jobGroup,jobName)
+if result.success: dbkey = result.returnValue
+else:
+    print("dbkey not found for",jobGroup+"/"+jobName)
+    bl.finishup(result.success)
+
+print("setting",jobGroup + "/" + jobName,"param number",str(option.paramIndex),"=","\""+str(option.paramValue)+"\"")
+print("NSHScriptJob","addNSHScriptParameterValueByGroupAndName",[jobGroup,jobName,option.paramIndex,option.paramValue])
+result = bl.runBlcli("NSHScriptJob","addNSHScriptParameterValueByGroupAndName",[jobGroup,jobName,option.paramIndex,option.paramValue])
+print(result)
+
+bl.finishup(result.success)
+

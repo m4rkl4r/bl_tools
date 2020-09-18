@@ -1,0 +1,81 @@
+#!/unixworks/virtualenvs/py382/bin/python
+
+from blBase import blBase
+from blLib import blGroupType
+import sys
+import re
+
+from optparse import OptionParser
+
+USAGE="bl_mkdir [--jobgroup group | --depotgroup group | --servergroup group ]"
+parser = OptionParser(usage=USAGE)
+blBase.setUnsupported(parser)
+
+parser.add_option("--depotgroup",dest="depotGroup")
+parser.add_option("--jobgroup",dest="jobGroup")
+parser.add_option("--servergroup",dest="serverGroup")
+
+(option,args) = parser.parse_args()
+
+parentGroup=None
+childGroup=None
+
+optsum=0
+if option.jobGroup is not None: optsum=optsum+1
+if option.serverGroup is not None: optsum=optsum+1
+if option.depotGroup is not None: optsum=optsum+1
+
+if optsum != 1:
+    parser.print_help()
+    sys.exit(1)
+
+newGroup=None
+for dir in [option.jobGroup,option.serverGroup,option.depotGroup]:
+    if dir or dir == '':
+        (parentGroup,childGroup)=blBase.normalizeArg(dir,"whichever arg you passed")
+        if childGroup:
+            newGroup = parentGroup + "/" + childGroup
+        else:
+            newGroup = parentGroup
+
+if newGroup is None:
+    print("couldn't define destination folder.  Exiting.")
+    sys.exit(1)
+
+bl=blBase()
+
+if option.depotGroup is not None: groupType="DepotGroup"
+if option.jobGroup is not None: groupType="JobGroup"
+if option.serverGroup is not None: groupType="StaticServerGroup"
+
+print("groupType:",groupType)
+print("creating",newGroup,"as",groupType)
+result=None
+
+## try the quick rout first - see if just the top level directory needs to be created
+## note that this one returns result.success==True if there's not some big error
+## You have to check result.returnValue to see if the directory is there
+result = bl.runBlcli(groupType,"groupExists",[parentGroup])
+print("bl_mkdir: groupExists(",parentGroup,")")
+if not result.success:
+    msg = "lookup of jobGroup "+parentGroup+" was problematic:",result
+    raise Exception(msg)
+else:
+    if result.returnValue == "true":
+        print("group",parentGroup,"found")
+        if childGroup:
+            print("doing mkdir_recursive of",childGroup,"on base",parentGroup,":")
+            success = bl.mkdir_recursive(groupType,parentGroup,childGroup)
+            print(success)
+    else: ## start validating/creating directories from /
+        print("doing mkdir_recursive of",newGroup,"on base","/",end=" ")
+        success = bl.mkdir_recursive(groupType,"",newGroup)
+        print(success)
+
+print("followup: groupExists(",newGroup,"):",end=" ")
+result=bl.runBlcli(groupType,"groupExists",newGroup)
+print(result.success)
+if not result.success:
+    print(result)
+
+bl.finishup(result.success)

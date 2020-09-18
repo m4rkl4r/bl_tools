@@ -1,0 +1,75 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import os
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--script", dest="scriptSource",help="//hostfqdn/path/to/script or /path/to/script or ./path/to/script")
+parser.add_option("--depotscript", dest="depotScript",help="where to place the script in the depot.  If it doesn't start with '/', $myGroup will be prepended.  If this option is not specified, --script will be placed in $myGroup")
+parser.add_option("--filedesc", dest="fileDescription")
+parser.add_option("--each", action="store_true",dest="each",help="Type 1: execute on each host (runscript) - runs as bladmin")
+parser.add_option("--once", action="store_true",dest="once",help="Type 2: execute once passing a hostlist as parameter - runs as bladmin")
+parser.add_option("--nexec",action="store_true", dest="nexec",help="Type 3: copy to host and execute -- default -- for non-nsh scripts")
+parser.add_option("--perl", action="store_true",dest="perl",help="Type 4: execute using perl interpreter, passing a hostlist as parameter")
+
+(option,args) = parser.parse_args()
+
+if not option.scriptSource:
+    parser.print_help()
+    print() 
+    print("--script is mandatory")
+    sys.exit(1)
+
+if not re.search("^./",option.scriptSource) and not re.search("^/",option.scriptSource):
+    option.scriptSource="./" + option.scriptSource
+
+if not option.depotScript: # if --depotscript not spcefied, use the 'basename' value of --script
+    depotScript = option.scriptSource.split("/")[-1]
+    depotGroup = blBase.getMyGroup()
+else:
+    (depotGroup,depotScript)= blBase.normalizeArg(option.depotScript,"--depotscript")
+bl=blBase()
+
+type_arg_cnt=0;
+for arg in [option.once,option.each,option.perl,option.nexec]:
+    if arg: type_arg_cnt=type_arg_cnt+1
+if type_arg_cnt==0:
+    option.nexec=True
+if type_arg_cnt>1:
+    parser.print_help()
+    print()
+    print("exactly one of --once,--each,--perl,--nexec may be used")
+    sys.exit(1)
+
+
+filetype=0
+if option.once: filetype=1
+if option.each: filetype=2
+if option.perl: filetype=3
+if option.nexec: filetype=4
+
+fileDescription=""
+if option.fileDescription: fileDescription=option.fileDescription
+
+script=option.scriptSource
+if not re.match("^//",script):
+    fqdn = bl.localBlFQDN()
+    print("fqdn:",fqdn)
+    if re.match("^\.",script):
+        cwd=os.getcwd()
+        print(fqdn,cwd,script) 
+        script = "//" + fqdn + cwd + "/" + script
+    elif re.match("^/",script):
+        script = "//" + fqdn + script
+
+## here maybe DepotFile addFileToDepot(groupname,filelocation,name,description) -- all fields are normal strings
+print("placing",script,"in",depotGroup,"as",depotScript)
+print("NSHScript","addNSHScriptToDepotByGroupName",[depotGroup,filetype,script,depotScript,fileDescription])
+result= bl.runBlcli("NSHScript","addNSHScriptToDepotByGroupName",[depotGroup,filetype,script,depotScript,fileDescription])
+print(result)
+
+bl.finishup(result.success)

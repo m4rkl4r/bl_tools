@@ -1,0 +1,66 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+from blLib import blGroupType
+import sys
+from gzip import GzipFile
+from io import StringIO
+import re
+
+from optparse import OptionParser
+
+print("This command is disabled")
+sys.exit(1)
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--depotgroup",action="store",dest="depotGroup")
+parser.add_option("--jobgroup",action="store",dest="jobGroup")
+parser.add_option("--servergroup",action="store",dest="serverGroup")
+
+(option,args) = parser.parse_args()
+
+print(option)
+optsum=0
+dest=None
+if option.depotGroup is not None: 
+    print("its depotgroup")
+    optsum=optsum+1
+    dest=option.depotGroup
+if option.jobGroup is not None: 
+    print("its jobgroup")
+    optsum=optsum+1
+    dest=option.jobGroup
+if option.serverGroup is not None: 
+    print("its servergroup")
+    optsum=optsum+1
+    dest=option.serverGroup
+
+if (optsum != 1):
+    print(("optsum=",optsum))
+    print("USAGE: bl_rmdir $GROUP/newdir [ --job $GROUP/dir| --depot $GROUP/dir | --server $GROUP/dir ]")
+    sys.exit(1)
+
+print("working to remove dest:", dest)
+
+destGroup,destDir=blBase.normalizeArg(dest,"--depotgroup or --jobgroup or --servergroup")
+print("found destGroup",destGroup,"destDir",destDir)
+if not destDir: destDir = destGroup
+else: destDir=destGroup +"/"+ destDir
+
+bl=blBase()
+success=True
+
+groupType=None
+if option.depotGroup:
+    groupType = blGroupType["Depot"]
+if option.jobGroup:
+    groupType = blGroupType["Job"]
+if option.serverGroup:
+    groupType = blGroupType["Server"]
+
+print("removing", groupType, ",", destDir)
+result=bl.runBlcli("Group","deleteGroupByTypeAndQualifiedName",[groupType,destDir])
+print(result)
+if not result.success:
+    success=False
+
+bl.finishup(success)

@@ -1,0 +1,94 @@
+#!/unixworks/virtualenvs/py382/bin/python
+
+from blBase import blBase
+from os.path import isfile
+import sys
+import re
+
+
+from optparse import OptionParser
+
+parser = OptionParser()
+blBase.setUnsupported(parser)
+parser.add_option("--servers", dest="servers",help="--servers list,of,hosts)")
+parser.add_option("--serverfile", dest="serverfile",help="--serverfile server_file - newline delimited)")
+parser.add_option("--file", dest="File", help="file to fetch")
+parser.add_option("--showhost", dest="showhost", action="store_true", help="prefix each line of output with the hostname")
+parser.add_option("--outfile", dest="outFile",help="--outfile <filename>")
+parser.add_option("--appendhost", dest="appendhost",action="store_true",help="append .hostname to each output file")
+
+(option,args) = parser.parse_args()
+
+full_server_list = set()
+if option.servers:
+    full_server_list.update([ x.strip().lower() for x in option.servers.split(",") ])
+if option.serverfile:
+    full_server_list.update([ x.strip().lower() for x in open(option.serverfile,mode="rt").readlines() ])
+if (not ( option.servers or option.serverfile )):
+    parser.print_help()
+    print("at least one of --servers or --serverfile is required")
+    sys.exit(1)
+if option.appendhost and not option.outFile:
+    parser.print_help()
+    print("at least one of --appendhost requires --outfile")
+    sys.exit(1)
+   
+bl=blBase()
+
+allservers = bl.validateServerList(full_server_list)
+servers = allservers["good"]
+badservers = allservers["bad"]
+
+
+if len(servers):
+    print("validated servers: ", servers)
+    pass #Host = servers[0]
+else:
+    print("no valid servers were submitted")
+    sys.exit(1)
+
+if len(badservers):
+    print("servers not being processed:",  badservers)
+
+failure=list()
+
+
+fileref = dict()
+for host in servers:
+    result = bl.catFile(host,option.File)
+    if result.success:
+        text = result.returnValue
+        if option.showhost == True:
+            text = text.split("\n")
+            text = "\n".join([ host + ": " + str(t) for t in text ])
+        if option.outFile:
+            fname = option.outFile
+            if option.appendhost:
+                fname = fname + "." + host
+
+            if fname in fileref:
+                outFile = fileref[fname]
+            else:
+                outFile = open(fname,mode="wt")
+                fileref[fname]=outFile
+            print("writing to",fname)
+            outFile.write(text)
+           
+            # if the hostname is appended to the filename, we are done with that host now
+            if option.appendhost:
+                outFile.close()
+        else:
+            print(text)
+    else:
+        failure.append(host)
+    #print(result.returnValue,end=' ')
+
+for server in fileref:
+    if not fileref[server].closed:
+        fileref[server].close()
+
+if failure:
+    print("failure on:", failure)
+    sys.exit(1)
+else:
+    sys.exit(0)

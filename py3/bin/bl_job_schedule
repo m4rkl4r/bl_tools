@@ -1,0 +1,289 @@
+#!/unixworks/virtualenvs/py382/bin/python
+from blBase import blBase
+import sys
+import re
+import os
+from datetime import datetime
+from datetime import timedelta
+
+from optparse import OptionParser
+
+parser = OptionParser(usage="""bl_job_schedule [options]
+This will copy the given job to $defaultMyGroup/copies/scheduled, creating the directories if needed
+--nocopy overrides this behavior.
+If --servers, --serverfile, and/or --servergroups are specified, the job will be first cleared of assigned servers.
+Otherwise, it will be run with the currently assigned servers.
+
+The new job name will be printed so you can retrieve results with bl_printlog or run the job again
+If you get --email results, this will give you the job runid which can also be used to print logs with bl_printlog
+"""
+
+)
+blBase.setUnsupported(parser)
+## PLAN:
+parser.add_option("--job", dest="job",help="fully qualified job name.  If not starting with '/', $myGroup will be prepended, and copy will be scheduled from $defaultMyGroup/copies/scheduled/${job}-{start-date}.")
+parser.add_option("--no-copy",dest="noCopy",action="store_true",help="script will be scheduled from existing copy.  server list will be cleared and recreated if specified.")
+parser.add_option("--copy-dest",dest="copyDir",action="store_true",help="dest dir for copied job.  default value $defaultMyGroup/copies/scheduled. unqualified paths are appended to $myGroup.")
+parser.add_option("--append-label",dest="appendLabel",help="If specified, new job will be named ${job}-${label}")
+parser.add_option("--startdate", dest="startDate",help="(required)(dont forget to quote the date) YYYY-MM-DD HH:MM:SS (24hr clock) - date of first scheduled execution")
+parser.add_option("--servers", dest="servers",help="comma delimited list of bladelogic server names (typicaly fqdn)")
+parser.add_option("--serverfile", dest="serverFile",help="filename with newline delimited list of servers (typically fqdn)")
+parser.add_option("--servergroups", dest="serverGroups",help="comma delimited list of server groups in /qualified/group/name format")
+parser.add_option("--daily", dest="daily",action="store_true",default=False,help="execute daily at time specified in --startdate")
+parser.add_option("--weekly", dest="weekly",action="store",default=False,help="specify comma separated list of days: \"sun,mon,tue,wed,thu,fri,sat\"")
+parser.add_option("--weekly-interval", dest="weeklyInterval",action="store",default=False,help="give a number N.  run every N weeks.")
+parser.add_option("--monthly", dest="monthly",action="store_true",default=False,help="execute monthly with first time at --startdate")
+parser.add_option("--once", dest="once",action="store_true",default=False,help="excute once at time specified by --startdate")
+parser.add_option("--interval", dest="interval",action="store_true",default=False,help="execute at --startdate, and then at the interval specified by a combination of --intervaldays, --intervalhours, --intervalminutes")
+parser.add_option("--intervaldays", dest="intervalDays",type="int",default=0,help="integer")
+parser.add_option("--intervalhours", dest="intervalHours",type="int",default=0,help="integer")
+parser.add_option("--intervalminutes", dest="intervalMinutes",type="int",default=0,help="integer")
+parser.add_option("--email", dest="email",help="where to send the status report (optional)")
+#parser.add_option("--priority-lowest", dest="priorityLowest",action="store_true",help="where to send the status report (optional)")
+#parser.add_option("--priority-low", dest="priorityLow",action="store_true",help="where to send the status report (optional)")
+#parser.add_option("--priority-normal", dest="priorityNormal",action="store_true",help="where to send the status report (optional)")
+#parser.add_option("--priority-high", dest="priorityHigh",action="store_true",help="where to send the status report (optional)")
+#parser.add_option("--priority-critical", dest="priorityCritical",action="store_true",help="where to send the status report (optional)")
+(option,args) = parser.parse_args()
+
+if not (option.job):
+    parser.print_help()
+    print()
+    print("--job is required.")
+    sys.exit(1)
+# prevent confusion
+if option.noCopy and option.appendLabel:
+    parser.print_help()
+    print()
+    print("--no-copy and --append-label are incompatible")
+    sys.exit(1)
+
+# validate interval size if --interval specified
+if option.interval:
+    interval_fail=False
+    ## test that there's at least one specified > 0;  these are integers, but we are coercing so the test is valid for None values
+    if not (int(option.intervalDays) + int(option.intervalHours) + int(option.intervalMinutes))>0: interval_fail=True
+    ## test for negative (invalid) values
+    if int(option.intervalDays) < 0 or int(option.intervalHours) < 0 or int(option.intervalMinutes) < 0: interval_fail=True
+    #option.intervaldays=str(int(option.intervaldays))
+    #option.intervalhours=str(int(option.intervalhours))
+    #option.intervalminutes=str(int(option.intervalminutes))
+    if interval_fail:
+        parser.print_help()
+        print()
+        print("--interval requires a positive integer value for one or more of --intervaldays, --intervalhours, --intervalminutes")
+        sys.exit(1)
+#if (option.interval and not (validate_int(option.intervaldays)) or (option.intervalhours and not (validate_int(option.intervalhours))
+if option.weekly: weeklyChosen=True
+else: weeklyChosen=False
+if (int(option.daily)+int(weeklyChosen)+int(option.monthly)+int(option.once)+int(option.interval) != 1):
+    parser.print_help()
+    print()
+    print("exactly one of --daily, --weekly, --monthly, --once, --interval must be specified")
+    sys.exit(1)
+if option.weeklyInterval and not option.weekly:
+    parser.print_help()
+    print()
+    print("--weekly-interval requires --weekly")
+    sys.exit(1)
+def validate_startdate(startdate):
+    (date,time) = startdate.split(" ") # match any whitespace
+    if not date or not time: return False
+    if not re.match("20[1-9][0-9]-[0-1][0-9]-[0-3][0-9]$",date): return False
+    if not re.match("[0-2][0-9]:[0-5][0-9]:[0-5][0-9]$",time): return False
+    return True
+if not option.startDate or not validate_startdate(option.startDate):
+    parser.print_help()
+    print()
+    print("--startdate is required in the form YYYY-MM-DD HH:MM:SS in 24h time")
+    sys.exit(1)
+
+if option.monthly:
+    dayofmonth=option.startDate.split(None)[0].split("-")[2] # None matches any whitespace
+    if re.match("0",dayofmonth): # if day of month < 10
+        dayofmonth=dayofmonth[1]
+
+(jobGroup,jobName)=blBase.normalizeArg(option.job,"--job")
+bl=blBase()
+
+## get jobkey
+result = bl.jobDBKey(jobGroup,jobName)
+if not result.success:
+    print("no job key could be found for job",jobName,"at",jobGroup)
+    bl.finishup(result.success)
+else:
+    jobkey = result.returnValue
+
+## attempted + "/" + remaining is the full path to be found or created
+## On each iteration, the leading folder in remaining is removed and appended to attempted
+## Initial condition is to call with attempted="" and remaining="/the/path/in/question"
+## check for and/or create $myGroup/copies/scheduled
+#def jobGroup_findOrCreate(attempted,remaining):
+#    if not remaining:
+#        return True
+#    else:
+#        attempted = attempted + remaining.split("/")[0]
+#        remaining = "/".join(remaining.split("/")[1:])
+#    attempted = attempted + "/" + 
+#    result = bl.runBlcli("JobGroup","groupExists",[jobGroup])
+#    if not result.success:
+#        raise Error(str("lookup of jobGroup",jobGroup,"was problematic:",str(result)))
+#    else:
+#        if result.returnValue == "true":
+#            print "jobGroup",jobGroup,"found."
+#            return True
+#        else:
+#            print "creating jobGroup",jobGroup + ":",
+#            (parentGroup,childGroup) = blBase.normalizeArg(jobGroup,"in jobGroup_findOrCreate")
+#            result = bl.runBlcli("JobGroup","createGroupWithParentName",[childGroup,parentGroup])
+#            if not result.success:
+#                raise Error(str("creation of jobGroup",jobGroup,"was problematic:",str(result)))
+#            else:
+#                return True
+
+## validate the copy directory exists, create if needed
+## then create the directory, and create the job copy, setting jobkey to the new value
+newJobName=None
+newJobGroup=None
+if not option.noCopy:
+    # make sure the job depot folder exists
+    if not option.copyDir:
+        newJobGroup=bl.defaultMyGroup + "/copies/scheduled"
+        if not bl.mkdir_recursive("JobGroup",bl.defaultMyGroup, "copies/scheduled"):
+            print("could not create",bl.defaultMyGroup+"/" +  "copies/sheduled.  exiting.")
+            bl.finishup(False)
+    else:
+        mkdirBase,mkdirAppend=blBase.normalizeArg(option.copyDir,"custom copy destination folder")
+        newJobGroup=mkdirBase + "/" + mkdirAppend
+        if not bl.mkdir_recursive("JobGroup","",mkdirBase + "/" + mkdirAppend):
+            print("could not create",mkdirBase + "/" + mkdirAppend," - exiting.")
+            bl.finishup(False)
+
+    jobNameStartDate = option.startDate.replace(" ", "_")
+    jobNameStartDate = jobNameStartDate.replace(":","")
+    jobNameStartDate = jobNameStartDate.replace("-","")
+    newJobName = jobName + "-start" + jobNameStartDate
+
+    if option.appendLabel:
+        newJobName = newJobName + "-" + option.appendLabel
+
+    print()
+    print("creating",newJobName,"in",newJobGroup,":", end=' ')
+    result = bl.runBlcli("Job","copyJob",[jobkey,newJobGroup,newJobName])
+    print(result.success)
+    if result.success:
+        #print jobGroup+"/"+jobName,"copied to",newJobGroup + "/" + newJobName
+        jobkey = result.returnValue
+    else:
+        print("job copy failed.  exiting.")
+        print(result)
+        bl.finishup(result.success)
+if newJobName: scheduled_job = newJobGroup + "/" + newJobName
+else: scheduled_job = option.job
+
+#setup the function call
+useEmail = ""
+schedMethod=""
+#pick schedule type
+schedule_args = [jobkey,option.startDate]
+if option.daily: schedMethod="addDailySchedule"
+if option.weekly:
+    schedMethod="addWeeklySchedule"
+    weeklyDaySum = 0
+    weeklyDays = option.weekly.split(",")
+    for d in weeklyDays:
+        if d.lower() == "sun": weeklyDaySum = weeklyDaySum + 1
+        elif d.lower() == "mon": weeklyDaySum = weeklyDaySum + 2
+        elif d.lower() == "tue": weeklyDaySum = weeklyDaySum + 4
+        elif d.lower() == "wed": weeklyDaySum = weeklyDaySum + 8
+        elif d.lower() == "thu": weeklyDaySum = weeklyDaySum + 16
+        elif d.lower() == "fri": weeklyDaySum = weeklyDaySum + 32
+        elif d.lower() == "sat": weeklyDaySum = weeklyDaySum + 64
+        else:
+            print(d.lower(),"is not one of sun,mon,tue,wed,thu,fri,sat")
+            sys.exit(1)
+    if not option.weeklyInterval: option.weeklyInterval=1
+    schedule_args.extend([weeklyDaySum,option.weeklyInterval])
+elif option.monthly:
+    schedMethod="addMonthlySchedule"
+    schedule_args.extend([dayofmonth])
+elif option.once:
+    schedMethod="addOneTimeSchedule"
+elif option.interval:
+    schedMethod="addIntervalSchedule"
+    schedule_args.extend([option.intervalDays,option.intervalHours,option.intervalMinutes])
+if option.email:
+    schedMethod=schedMethod+"WithEMailNotification"
+    # for now, email on all status types - 14=success=2+failure=4+cancel=8
+    schedule_args.extend([option.email,14])
+
+result = bl.runBlcli("Job",schedMethod,schedule_args)
+if not result.success:
+    print(result)
+    print()
+    print("could not create schedule with",schedMethod,schedule_args," -Exiting.")
+    bl.finishup(result.success)
+
+
+(scheduledGroup,scheduledJob) = blBase.normalizeArg(scheduled_job,"normalizing the scheduled jobname")
+
+print()
+if option.serverGroups or option.servers or option.serverFile:
+    print("clearing current serverlist, and adding specified servers to", scheduled_job)
+else:
+    print("If you are creating a new job copy, it will not have any servers assigned.  Please make sure this is corrected")
+    bl.finishup(True)
+
+if option.serverGroups:
+    serverGroups=option.serverGroups.split(",")
+    newGroups = list()
+    #myGroup = blBase.getMyGroup()
+    for group in serverGroups:
+        (groupbase,groupname)=blBase.normalizeArg(group,"--servergroups="+group)
+        newGroups.append(groupbase+'/'+groupname)
+    print()
+    print("adding server groups to job:", end=' ')
+    print(",".join(newGroups)+":", end=' ')
+    result = bl.addServerGroupsToJob(scheduledGroup,scheduledJob,newGroups)
+    print(result.success)
+    if not result.success:
+        print(result)
+        success=False
+    else: jobkey = result.returnValue
+
+if option.servers:
+    print("Adding --servers="+option.servers+" to job:", end=' ')
+    servers_servermap = bl.validateServerList(option.servers.split(","))
+    result = bl.addServersToJob(scheduledGroup,scheduledJob,servers_servermap["good"])
+    print(result.success)
+    if not result.success:
+        print(result)
+        print("could not add --servers to job")
+        success=False
+    else: jobkey = result.returnValue
+    if servers_servermap["bad"]:
+        print("The following --servers were not found in role.")
+        for server in servers_servermap["bad"]:
+            print("\t" + server)
+
+if option.serverFile:
+    servers = open(option.serverFile,mode="rt").readlines()
+    servers = [x.strip() for x in servers]
+    serverfile_servermap = bl.validateServerList(servers)
+    print("Adding --serverfile to",scheduled_job,"containing",",".join(servers),":", end=' ')
+    result = bl.addServersToJob(scheduledGroup,scheduledJob,serverfile_servermap["good"])
+    print(result.success)
+    if not result.success:
+        print(result)
+        success=False
+    else: jobkey = result.returnValue
+    if serverfile_servermap["bad"]:
+        print("The following from --serverfile were not found in role:")
+        for server in serverfile_servermap["bad"]:
+            print("\t" + server)
+
+print()
+print("schedMethod:", schedMethod)
+print("schedule_args:",schedule_args)
+print("job:",scheduled_job)
+print("servers:",bl.runBlcli("Job","getTargets",[jobkey,"Servers"]).returnValues)
